@@ -1,0 +1,33 @@
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core >=3.2,<4"]
+
+[project]
+name = "checkontap"
+readme = "README.md"
+description = "check_ontap monitoring plugin"
+version = "0.1a0"
+requires-python = ">= 3.6"
+authors = [
+    { name = "Matthias Gallinger", email = "matthias.gallinger@consol.de" }
+]
+dependencies = [
+    "netapp-ontap >= 9.11.1.0",
+    "monplugin >= 0.4",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: System :: Monitoring",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
+
+[project.scripts]
+check_ontap = "checkontap.cli:main"
+
+[project.urls]
+"homepage" = "https://github.com/consol/check_ontap"
+"repository" = "https://github.com/consol/check_ontap.git"
+"issues" = "https://github.com/consol/check_ontap/issues"
+
+[tool.flit.sdist]
+exclude = ["dist/"]
