@@ -103,7 +103,7 @@ def main():
     except urllib3.exceptions.NewConnectionError as e:
         print(f"#---> {e}")
     except Exception as e:
-        print("UNKNOWN - Unhandled exception:")
+        print(f"UNKNOWN - Unhandled exception: {e}")
         #traceback.print_exc()
         sys.exit(3)
 
