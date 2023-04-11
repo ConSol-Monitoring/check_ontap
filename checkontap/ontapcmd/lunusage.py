@@ -61,6 +61,7 @@ def run():
             lun.get(fields="space")
             logger.debug(f"lun info for {lun.name}\n{lun.__dict__}")
             if (args.exclude or args.include) and item_filter(args,lun.name):
+                luns_count -= 1
                 continue
 
             pctUsage = to_percent(lun.space.size,lun.space.used)
@@ -108,7 +109,7 @@ def run():
                     check.threshold.get_status(lun.space.used),
                     f"{lun.name} (Usage {lun.space.used}/{lun.space.size}B {pctUsage}%)"
                 )
-        (code, message) = check.check_messages(separator='\n  ')
+        (code, message) = check.check_messages(separator='\n  ', allok=f"all {luns_count} luns are ok")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:

@@ -101,6 +101,7 @@ def run():
             if not hasattr(vol,'space'):
                 continue
             if (args.exclude or args.include) and item_filter(args,vol.name):
+                volumes_count -= 1
                 continue
             logger.debug(f"VOLUME {vol.name}\n{vol}")
             vols.append(vol) 
@@ -155,7 +156,7 @@ def run():
                 check.threshold.get_status(vol.space.used),
                 f"{vol.name} (Usage {vol.space.used}/{vol.space.size}B {pctUsage}%)"
             )
-    (code, message) = check.check_messages(separator='\n  ')
+    (code, message) = check.check_messages(separator='\n  ',allok=f"all {volumes_count} are ok")
     check.exit(code=code,message=message)
 
 if __name__ == "__main__":

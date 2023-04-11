@@ -102,6 +102,7 @@ def run():
         for aggr in Aggregate.get_collection():
             aggr.get(fields="space,uuid")
             if (args.exclude or args.include) and item_filter(args,aggr.name):
+                aggr_count -= 1
                 continue
             for plex in Plex.get_collection(aggr.uuid):
                 plex.get(fields="raid_groups")
@@ -151,7 +152,7 @@ def run():
                     check.threshold.get_status(aggr.space.block_storage.used),
                     f"{aggr.name} (Usage {aggr.space.block_storage.used}/{aggr.space.block_storage.size}B {pctUsage}%)"
                 )
-        (code, message) = check.check_messages(separator='\n  ')
+        (code, message) = check.check_messages(separator='\n  ',allok=f"all {aggr_count} aggregates are fine")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:
