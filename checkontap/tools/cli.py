@@ -224,4 +224,31 @@ class Argument:
             'help': 'add performance data to Output',
         }
     }
-    
+    INODE_WARN = {
+        'name_or_flags': ['--inode-warning'],
+        'options': {
+            'action': 'store',
+            'help': 'Inode warning threshold in %'
+        }
+    }
+    INODE_CRIT = {
+        'name_or_flags': ['--inode-critical'],
+        'options': {
+            'action': 'store',
+            'help': 'Inode critical threshold in %',
+        }
+    }
+    SNAP_WARN = {
+        'name_or_flags': ['--snapshot-warning'],
+        'options': {
+            'action': 'store',
+            'help': 'Snapshot used space warning threshold in %'
+        }
+    }
+    SNAP_CRIT = {
+        'name_or_flags': ['--snapshot-critical'],
+        'options': {
+            'action': 'store',
+            'help': 'Snapshot used space critical threshold in %',
+        }
+    }

@@ -16,7 +16,7 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from monplugin import Check,Status
+from monplugin import Check,Status,Threshold
 from netapp_ontap.resources import Volume
 from netapp_ontap import NetAppRestError
 from ..tools import cli
@@ -25,52 +25,54 @@ from ..tools.helper import setup_connection,to_percent,percent_to,to_bytes,bytes
 __cmd__ = "volume-usage"
 """
 Volume({
-    'type': 'rw', 
+    'files': {'maximum': 31122, 'used': 102},
+    'name': 'foo_root',
+    '_links': {'self': {'href': '/api/storage/volumes/ec5e675c-b124-11ed-8cdc-d039ea94786e'}},
     'svm': {
-        '_links': {'self': {'href': '/api/svm/svms/82b98e0f-68c7-11e8-ace3-00a098d32021'}}, 
-        'uuid': '82b98e0f-68c7-11e8-ace3-00a098d32021', 
-        'name': acme01'}, 
-    'comment': '', 
-    'aggregates': [{'name': 'aggr1_acme01', 'uuid': '97e37d61-23b0-4917-85c8-ae9d5354bba5'}],
-    'size': 30918266974208, 
-    'create_time': '2018-06-05T16:01:04+02:00', 
-    '_links': {'self': {'href': '/api/storage/volumes/40a80741-d540-4900-a24f-050e9b5128b1'}}, 
-    'clone': {'is_flexclone': False}, 
-    'metric': {
-        'timestamp': '2022-10-21T11:04:15+00:00', 
-        'iops': {'total': 743, 'write': 235, 'read': 0, 'other': 507}, 
-        'duration': 'PT15S', 
-        'cloud': {
-            'timestamp': '2021-06-21T06:53:30+00:00', 
-            'iops': {'total': 0, 'write': 0, 'read': 0, 'other': 0}, 
-            'duration': 'PT15S', 
-            'latency': {'total': 0, 'write': 0, 'read': 0, 'other': 0}, 
-            'status': 'ok'}, 
-        'throughput': {'total': 13756079, 'write': 13753895, 'read': 2184, 'other': 0}, 
-        'latency': {'total': 216, 'write': 239, 'read': 9864, 'other': 200}, 
-        'status': 'ok'}, 
-    'style': 'flexvol', 
-    'cloud_retrieval_policy': 'default', 
-    'uuid': '40a80741-d540-4900-a24f-050e9b5128b1', 
-    'analytics': {'state': 'off'}, 
-    'snapmirror': {'is_protected': False}, 
-    'language': 'c.utf_8', 
-    'nas': {'export_policy': {'name': 'default'}}, 
-    'name': 'nasvol', 
-    'space': {'available': 16884657414144, 'size': 30918266974208, 'used': 13723911647232}, 
-    'state': 'online', 
-    'tiering': {'policy': 'none'}, 
-    'snapshot_policy': {'name': 'none'}
-    })
+        'name': 'foo',
+        '_links': {'self': {'href': '/api/svm/svms/e76b4940-b124-11ed-8cdc-d039ea94786e'}},
+        'uuid': 'e76b4940-b124-11ed-8cdc-d039ea94786e'},
+    'space': {
+        'footprint': 6590464,
+        'used_by_afs': 2080768,
+        'volume_guarantee_footprint': 1056739328,
+        'expected_available': 1017974784,
+        'physical_used_percent': 1,
+        'nearly_full_threshold_percent': 95,
+        'used': 2080768,
+        'over_provisioned': 0,
+        'percent_used': 0,
+        'size': 1073741824,
+        'delayed_free_footprint': 10412032,
+        'user_data': 40960,
+        'available': 1017974784,
+        'metadata': 11005952,
+        'fractional_reserve': 100,
+        'overwrite_reserve': 0,
+        'filesystem_size': 1073741824,
+        'available_percent': 99,
+        'logical_space': {'used': 2080768, 'used_by_afs': 2080768, 'reporting': False, 'enforcement': False, 'used_by_snapshots': 0, 'used_percent': 0},
+        'filesystem_size_fixed': False,
+        'physical_used': 6590464,
+        'size_available_for_snapshots': 1067151360,
+        'total_footprint': 1084747776,
+        'local_tier_footprint': 1084747776,
+        'overwrite_reserve_used': 0,
+        'afs_total': 1020055552,
+        'full_threshold_percent': 98,
+        'snapshot': {'used': 4509696, 'reserve_available': 49176576, 'reserve_percent': 5, 'space_used_percent': 8, 'autodelete_enabled': False, 'autodelete_trigger': 'volume', 'reserve_size': 53686272}}, 'uuid': 'ec5e675c-b124-11ed-8cdc-d039ea94786e'})
 """
 def run():
     parser = cli.Parser()
     parser.set_epilog("Name of SVM will be prepended automaticaly to the volume name")
-    parser.add_required_arguments(cli.Argument.WARNING,cli.Argument.CRITICAL)
+    parser.add_required_arguments(cli.Argument.WARNING, cli.Argument.CRITICAL)
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
                                   cli.Argument.NAME,
-                                  cli.Argument.UNIT)
+                                  cli.Argument.UNIT,
+                                  cli.Argument.INODE_WARN, cli.Argument.INODE_CRIT,
+                                  cli.Argument.SNAP_WARN, cli.Argument.SNAP_CRIT,
+                                  )
     args = parser.get_args()
 
     # Setup module logging
@@ -83,81 +85,100 @@ def run():
 
     check = Check(shortname="")
 
-    check.set_threshold(
-        warning=args.warning,
-        critical=args.critical,
-    )
-    
     setup_connection(args.host, args.api_user, args.api_pass)
-    vols = [] 
+    vols = []
+
     try:
         volumes_count = Volume.count_collection()
         logger.info(f"found {volumes_count} volumes")
         if volumes_count == 0:
-            check.exit(Status.UNKNOWN, "no vols found")
-        
+            check.exit(Status.UNKNOWN, "no volumes found")
+
         for vol in Volume.get_collection():
-            vol.get()
+            vol.get(fields="svm,space,files")
             if not hasattr(vol,'space'):
                 continue
             if (args.exclude or args.include) and item_filter(args,vol.name):
+                logger.info(f"But item filter exclude: '{args.exclude}' or include: '{args.include}' has matched {vol.name}")
                 volumes_count -= 1
                 continue
-            logger.debug(f"VOLUME {vol.name}\n{vol}")
-            vols.append(vol) 
+            logger.debug(f"SVM {vol.svm.name} VOLUME {vol.name}\n{vol}")
+            vols.append(vol)
 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
 
-    for vol in vols: 
-        if vol.svm.name:
-            if vol.svm.name not in vol.name:
-                volname = f"{vol.svm.name}_{vol.name}"
-        else:
-            volname = f"{vol.name}"
-        pctUsage = to_percent(vol.space.size,vol.space.used)
-        unitPerf = {'label': f'{volname}_space',
-                'value': vol.space.used,
-                'uom': 'B',
-                'min': 0,
+    for vol in vols:
+        v = {
+            'name': f"{vol.svm.name}_{vol.name}",
+            'data_total': vol.space.afs_total,
+            'space': {
                 'max': vol.space.size,
-                }
-        pctPerf = {
-            'label': f'{volname}_percent',
-            'value': pctUsage,
-            'uom': '%',
-            'min': 0,
-            'max': 100,
+                'used': vol.space.used,
+                'pct': to_percent(vol.space.size, vol.space.used)
+            },
+            'inodes': {
+                'max': vol.files.maximum,
+                'used': vol.files.used,
+                'pct': to_percent(vol.files.maximum, vol.files.used)
+            },
+            'snapshot': {
+                'max': vol.space.snapshot.reserve_size,
+                'used': vol.space.snapshot.used,
+                'pct': to_percent(vol.space.snapshot.reserve_size, vol.space.snapshot.used)
+            }
         }
+        # unchecked perfdata
+        check.add_perfmultidata(v['name'], 'volume_usage', label="data_total",value=v['data_total'], uom="B")
+        # Volume usage
+        t = {}
         if args.unit and '%' in args.unit:
-            pctPerf['threshold'] = check.threshold
-            check.add_perfdata(**pctPerf)
-            unitPerf['warning'] = percent_to(vol.space.size,args.warning)
-            unitPerf['critical'] = percent_to(vol.space.size,args.critical)
-            check.add_perfdata(**unitPerf)
-            check.add_message(
-                check.threshold.get_status(pctUsage),
-                f"{vol.name} (Usage {bytes_to(vol.space.used,'GB')}/{bytes_to(vol.space.size,'GB')}GB {pctUsage}%)"
-            )
+            t['warning'] = percent_to(v['space']['max'],args.warning)
+            t['critical'] = percent_to(v['space']['max'],args.critical)
         elif args.unit:
-            unitPerf['warning'] = to_bytes(args.warning,args.unit)
-            unitPerf['critical'] = to_bytes(args.critical,args.unit)
-            check.add_perfdata(**unitPerf)
-            check.add_perfdata(**pctPerf)
-            check.add_message(
-                check.threshold.get_status(bytes_to(vol.space.used, args.unit)),
-                f"{vol.name} (Usage {bytes_to(vol.space.used,args.unit)}/{bytes_to(vol.space.size,args.unit)}{args.unit} {pctUsage}%)"
-            )
+            t['warning'] = to_bytes(args.warning,args.unit)
+            t['critical'] = to_bytes(args.critical,args.unit)
         else:
-            unitPerf['threshold'] = check.threshold
-            check.add_perfdata(**unitPerf)
-            check.add_perfdata(**pctPerf)
-            check.add_message(
-                check.threshold.get_status(vol.space.used),
-                f"{vol.name} (Usage {vol.space.used}/{vol.space.size}B {pctUsage}%)"
-            )
-    (code, message) = check.check_messages(separator='\n  ',allok=f"all {volumes_count} are ok")
-    check.exit(code=code,message=message)
+            t['warning'] = args.warning
+            t['critical'] = args.critical
+
+        usage = Threshold(**t)
+        output = (f"{v['name']} (Usage {bytes_to(v['space']['used'],'GB')}/{bytes_to(v['space']['max'],'GB')}GB {v['space']['pct']}%, Inodes {v['inodes']['pct']}%, Snapshots {v['snapshot']['pct']}%)")
+        check.add_message(usage.get_status(v['space']['used']),f"space {output}")
+        check.add_perfmultidata(v['name'], 'volume_usage',  label="space_used", value=v['space']['used'], uom="B", warning=t['warning'], critical=t['critical'], min=0, max=v['space']['max'])
+
+        # Inode usage
+        t = {}
+        if args.inode_warning:
+            t['warning'] = percent_to(v['inodes']['max'],args.inode_warning)
+        else:
+            t['warning'] = ""
+        if args.inode_critical:
+            t['critical'] = percent_to(v['inodes']['max'],args.inode_critical)
+        else:
+            t['critical'] = ""
+
+        inodes = Threshold(**t)
+        check.add_message(inodes.get_status(v['inodes']['used']),f"inodes {output}")
+        check.add_perfmultidata(v['name'], 'volume_usage',  label="inodes_used", value=v['inodes']['used'], warning=t['warning'], critical=t['critical'],min=0, max=v['inodes']['max'])
+
+        # Snapshot usage
+        t = {}
+        if args.snapshot_warning:
+            t['warning'] = percent_to(v['snapshot']['max'],args.snapshot_warning)
+        else:
+            t['warning'] = ""
+        if args.snapshot_critical:
+            t['critical'] = percent_to(v['snapshot']['max'],args.snapshot_critical)
+        else:
+            t['critical'] = ""
+
+        snap = Threshold(**t)
+        check.add_message(snap.get_status(v['snapshot']['used']),f"snaps {output}")
+        check.add_perfmultidata(v['name'], 'volume_usage',  label="snap_used", value=v['snapshot']['used'], uom="B", warning=t['warning'], critical=t['critical'],min=0, max=v['inodes']['max'])
+        
+    (code, message) = check.check_messages(separator='\n  ',separator_all='\n',allok=f"all {volumes_count} volumes are ok")
+    check.exit(code=code,message=f"{message}")
 
 if __name__ == "__main__":
     run()
