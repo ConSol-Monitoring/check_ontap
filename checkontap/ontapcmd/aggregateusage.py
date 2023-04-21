@@ -84,7 +84,7 @@ def run():
             log_obj.disabled = False
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
-    check = Check(shortname="")
+    check = Check()
 
     check.set_threshold(
         warning=args.warning,

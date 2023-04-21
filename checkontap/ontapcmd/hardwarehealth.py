@@ -51,7 +51,7 @@ def run():
 
     setup_connection(args.host, args.api_user, args.api_pass)
     
-    check = Check(shortname="")
+    check = Check()
     """
     [-type {fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown}] - Sensor Type
     [-state {normal|warn-low|warn-high|crit-low|crit-high|disabled|uninitialized|init-failed|not-available|invalid|retry|bad|not-present|failed|ignored|fault|unknown}]

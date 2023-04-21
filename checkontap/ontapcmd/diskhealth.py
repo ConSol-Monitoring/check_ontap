@@ -88,7 +88,7 @@ def run():
             log_obj.disabled = False
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
-    check = Check(shortname="")
+    check = Check()
     
     setup_connection(args.host, args.api_user, args.api_pass)
     

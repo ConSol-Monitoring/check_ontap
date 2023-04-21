@@ -75,7 +75,7 @@ def run():
 
     setup_connection(args.host, args.api_user, args.api_pass)
 
-    check = Check(shortname="")
+    check = Check()
 
     try:
         volumes_count = Volume.count_collection()

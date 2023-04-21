@@ -39,7 +39,7 @@ def run():
 
     setup_connection(args.host, args.api_user, args.api_pass)
     
-    check = Check(shortname="")
+    check = Check()
     # Cluster global state
     try:
         cluster = Cluster()
