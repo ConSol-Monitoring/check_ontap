@@ -41,11 +41,17 @@ def item_filter(args,item=None) -> None:
 
 # Percent returned with 2 decimals
 def to_percent(max,value) -> None:
-    pct = (float(value) / int(max) ) * 100
+    try:
+        pct = (float(value) / int(max) ) * 100
+    except Exception as err:
+        return err
     return(round(pct,2))
 
 def percent_to(max, pct) -> None:
-    value = (int(max) / 100) * int(pct)
+    try:
+        value = (int(max) / 100) * int(pct)
+    except Exception as err:
+        return err
     return(int(value))
 
 # Convert bytes to Mb, Gb, Tb ....
