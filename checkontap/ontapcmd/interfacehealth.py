@@ -101,7 +101,7 @@ def run():
     check.add_message(Status.OK, f"{count} of {len(IpInts)} Interfaces are up")
     
     for Int in IpInts:
-        check.add_message(Status.OK, f"Int {Int.name}\t{Int.state}\t is homed {Int.location.is_home}")
+        check.add_message(Status.OK, f"Int {Int.name:40}{Int.state:5}{Int.ip.address:16}/{Int.ip.netmask:3} is homed {Int.location.is_home}")
         
     (code, message) = check.check_messages(separator='\n  ')
     check.exit(code=code,message=message)
