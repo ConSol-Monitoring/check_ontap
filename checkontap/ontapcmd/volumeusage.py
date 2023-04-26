@@ -111,7 +111,6 @@ def run():
     for vol in vols:
         v = {
             'name': f"{vol.svm.name}_{vol.name}",
-            'data_total': vol.space.afs_total,
             'space': {
                 'max': vol.space.size,
                 'used': vol.space.used,
@@ -122,12 +121,24 @@ def run():
                 'used': vol.files.used,
                 'pct': to_percent(vol.files.maximum, vol.files.used)
             },
-            'snapshot': {
+        }
+        if hasattr(vol.space, 'afs_total'):
+            v['data_total'] = vol.space.afs_total
+        else:
+            v['data_total'] = vol.space.size
+        if hasattr(vol.space.snapshot, 'reserve_size'):
+            v['snapshot'] = {
                 'max': vol.space.snapshot.reserve_size,
                 'used': vol.space.snapshot.used,
                 'pct': to_percent(vol.space.snapshot.reserve_size, vol.space.snapshot.used)
             }
-        }
+        else:
+            v['snapshot'] = {
+                'max': 0,
+                'used': vol.space.snapshot.used,
+                'pct': 0
+            }
+            
         # unchecked perfdata
         check.add_perfmultidata(v['name'], 'volume_usage', label="data_total",value=v['data_total'], uom="B")
         # Volume usage
