@@ -29,7 +29,7 @@ __cmd__ = "cluster-health"
 def run():
     parser = cli.Parser()
     args = parser.get_args()
-    # Setup module logging 
+    # Setup module logging
     logger = logging.getLogger(__name__)
     logger.disabled=True
     if args.verbose:
@@ -38,26 +38,25 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     setup_connection(args.host, args.api_user, args.api_pass)
-    
+
     check = Check()
     # Cluster global state
     try:
         cluster = Cluster()
         cluster.get(fields="name,metric,version")
         logger.debug(f"Cluster info \n{cluster.__dict__}")
-        if 'ok' in cluster.metric.status:
-            check.add_message(Status.OK, "{}".format(cluster.version.full))
-        else:
+        if 'ok' not in cluster.metric.status.lower():
             check.add_message(Status.CRITICAL,"Cluster global status is {}".format(cluster.metric.status))
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
 
     # Cluster node states
+    Nodes = list(Node.get_collection(fields="name,state,membership,ha"))
     try:
-        for node in Node.get_collection(fields="name,state,membership,ha"):
+        for node in Nodes:
             logger.debug(f"Node info \n{node.__dict__}")
             m = "{} state {} as {}; giveback: {}; takeover: {}".format(node.name,node.state,node.membership,node.ha.giveback.state,node.ha.takeover.state)
-            if 'up' in node.state: 
+            if 'up' in node.state:
                 check.add_message(Status.OK, m)
             elif 'down' in node.state:
                 check.add_message(Status.CRITICAL, m)
@@ -65,9 +64,10 @@ def run():
                 check.add_message(Status.WARNING, m)
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
-    
+
+    short = f"Checked {len(Nodes)} Nodes"
     (code, message) = check.check_messages(separator="\n")
-    check.exit(code=code,message=message)
+    check.exit(code=code,message=f"{short}\n{message}")
 
 if __name__ == "__main__":
     run()

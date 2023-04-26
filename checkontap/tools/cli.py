@@ -228,27 +228,27 @@ class Argument:
         'name_or_flags': ['--inode-warning'],
         'options': {
             'action': 'store',
-            'help': 'Inode warning threshold in %'
+            'help': 'Inode warning threshold in percent'
         }
     }
     INODE_CRIT = {
         'name_or_flags': ['--inode-critical'],
         'options': {
             'action': 'store',
-            'help': 'Inode critical threshold in %',
+            'help': 'Inode critical threshold in percent'
         }
     }
     SNAP_WARN = {
         'name_or_flags': ['--snapshot-warning'],
         'options': {
             'action': 'store',
-            'help': 'Snapshot used space warning threshold in %'
+            'help': 'Snapshot used space warning threshold in percent'
         }
     }
     SNAP_CRIT = {
         'name_or_flags': ['--snapshot-critical'],
         'options': {
             'action': 'store',
-            'help': 'Snapshot used space critical threshold in %',
+            'help': 'Snapshot used space critical threshold in percent'
         }
     }
