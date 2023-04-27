@@ -17,10 +17,10 @@
 
 import logging
 from monplugin import Check,Status
-from netapp_ontap.resources import Cluster, Node
+from netapp_ontap.resources import Cluster, Node, IpInterface
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,severity
+from ..tools.helper import setup_connection,severity,item_filter
 
 __cmd__ = "cluster-health"
 
@@ -28,6 +28,16 @@ __cmd__ = "cluster-health"
 """
 def run():
     parser = cli.Parser()
+    parser.add_optional_arguments(cli.Argument.EXCLUDE,cli.Argument.INCLUDE)
+    parser.add_optional_arguments({
+        'name_or_flags': ['--mode'],
+        'options': {
+            'action': 'store',
+            'choices': ['health', 'connect'],
+            'default': 'health',
+        'help': 'check health state or interconnect of a cluster',
+        }
+    })
     args = parser.get_args()
     # Setup module logging
     logger = logging.getLogger(__name__)
@@ -40,20 +50,35 @@ def run():
     setup_connection(args.host, args.api_user, args.api_pass)
 
     check = Check()
-    # Cluster global state
+
+    # Get data
     try:
         cluster = Cluster()
         cluster.get(fields="name,metric,version")
         logger.debug(f"Cluster info \n{cluster.__dict__}")
-        if 'ok' not in cluster.metric.status.lower():
-            check.add_message(Status.CRITICAL,"Cluster global status is {}".format(cluster.metric.status))
+        nodes_count = Node.count_collection()
+        logger.debug(f"found {nodes_count} nodes")
+        nodes = list(Node.get_collection(fields="name,state,membership,ha,cluster_interfaces"))
+        logger.debug(f"{nodes}")
+        if args.mode == "connect":
+            interfaces = []
+            for node in nodes:
+                # fetch cluster interfaces
+                for ipint in node.cluster_interfaces:
+                    Interface = IpInterface(uuid=ipint.uuid)
+                    Interface.get()
+                    interfaces.append(Interface)
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
-
-    # Cluster node states
-    Nodes = list(Node.get_collection(fields="name,state,membership,ha"))
-    try:
-        for node in Nodes:
+    #
+    # Cluster health check
+    #
+    if args.mode == "health":
+        # Cluster global health
+        if 'ok' not in cluster.metric.status.lower():
+            check.add_message(Status.CRITICAL,"Cluster global status is {}".format(cluster.metric.status))
+        # Cluster node states
+        for node in nodes:
             logger.debug(f"Node info \n{node.__dict__}")
             m = "{} state {} as {}; giveback: {}; takeover: {}".format(node.name,node.state,node.membership,node.ha.giveback.state,node.ha.takeover.state)
             if 'up' in node.state:
@@ -62,10 +87,27 @@ def run():
                 check.add_message(Status.CRITICAL, m)
             else:
                 check.add_message(Status.WARNING, m)
-    except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        short = f"Checked {len(nodes)} Nodes"
 
-    short = f"Checked {len(Nodes)} Nodes"
+    #
+    # Cluster connect check
+    #
+    count = 0
+    if args.mode == "connect":
+        for IpInt in interfaces:
+            logger.debug(f"Interface info {IpInt.name}\n{IpInt.__dict__}")
+            if (args.exclude or args.include) and item_filter(args,IpInt.name):
+                logger.debug(f"ex-/include interface {IpInt.name}")
+                continue
+            count += 1
+            if 'down' in IpInt.state:
+                check.add_message(Status.CRITICAL, f"Int {IpInt.name} is {IpInt.state}")
+            elif not IpInt.location.is_home:
+                check.add_message(Status.CRITICAL, f"Int {IpInt.name} is on {IpInt.location.node.name} but should be on {IpInt.location.home_node.name}")
+            else:
+                check.add_message(Status.OK, f"Int {IpInt.name} on {IpInt.location.node.name} port {IpInt.location.port.name} is {IpInt.state}")
+        short = f"Checked {count} Interfaces"
+
     (code, message) = check.check_messages(separator="\n")
     check.exit(code=code,message=f"{short}\n{message}")
 

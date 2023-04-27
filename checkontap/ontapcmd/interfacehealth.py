@@ -71,7 +71,7 @@ def run():
     IpInts = []
     try:
         interface_count = IpInterface.count_collection()
-        logger.info(f"found {interface_count} volumes")
+        logger.info(f"found {interface_count} interfaces")
         if interface_count == 0:
             check.exit(Status.UNKNOWN, "no interfaces found")
 
