@@ -39,6 +39,31 @@ def item_filter(args,item=None) -> None:
         else:
             return(True)
 
+#
+# uom_to_bytes(20,%,2000) => 400B
+# uom_to_bytes(1024,MB) => 1048576B
+def uom_to_bytes(value, uom, maximum=None, bsize=1024) -> None:
+    a = {'kB' : 1, 'MB': 2, 'GB' : 3, 'TB' : 4, 'PB' : 5, 'EB' : 6 }
+    try:
+        if '%' in uom and maximum:
+            r = round((float(maximum) / 100) * int(value),2)
+        else:
+            r = round(float(value) * (bsize ** a[uom]),3)
+    except Exception as err:
+        return err
+    return(r)
+
+def bytes_to_uom(value, uom, maximum=None, bsize=1024) -> None:
+    a = {'kB' : 1, 'MB': 2, 'GB' : 3, 'TB' : 4, 'PB' : 5, 'EB' : 6 }
+    try:
+        if '%' in uom and maximum:
+            r = (float(value) / int(maximum) ) * 100
+        else:
+            r = round(float(value) / (bsize ** a[uom]),3)
+    except Exception as err:
+        return err
+    return(r)
+
 # Percent returned with 2 decimals
 def to_percent(max,value) -> None:
     try:

@@ -200,6 +200,17 @@ class Argument:
             'choices': ['%', 'kB', 'MB', 'GB', 'TB', 'PB'],
         }
     }
+    METRIC = {
+        'name_or_flags': ['-m', '--metric'],
+        'options': {
+            'action': 'store',
+            'default': 'usage',
+            'help': 'The metric to apply the thresholds on, defaults to `usage`, can be: '
+                    'usage (in percent), free and used. '
+                    'free and used are measured in bytes. You can one of these suffixes: '
+                    'kB, MB, GB for example: free_MB or used_GB'
+        }
+    }
     NAME = {
         'name_or_flags': ['--name'],
         'options': {
