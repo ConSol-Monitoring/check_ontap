@@ -16,13 +16,14 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from monplugin import Check,Status
+from monplugin import Check,Status,Threshold
 from netapp_ontap.resources import Lun
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,to_percent,percent_to,to_bytes,bytes_to,item_filter,severity
+from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
 
 __cmd__ = "lun-usage"
+description = f"Mode {__cmd__} with -m / --metric usage (%) or size desciption like used_GB"
 
 """
 """
@@ -31,10 +32,11 @@ def run():
     Wenn alles passt steht hier die Hilfe
     """
     parser = cli.Parser()
+    parser.set_description(description)
     parser.add_required_arguments(cli.Argument.WARNING,cli.Argument.CRITICAL)
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
-                                  cli.Argument.UNIT)
+                                  cli.Argument.METRIC)
     args = parser.get_args()
     # Setup module logging
     logger = logging.getLogger(__name__)
@@ -44,13 +46,7 @@ def run():
             log_obj.disabled = False
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
-    check = Check()
-
-    check.set_threshold(
-        warning=args.warning,
-        critical=args.critical,
-    )
-    
+    check = Check(threshold = Threshold(args.warning or None, args.critical or None))
     setup_connection(args.host, args.api_user, args.api_pass)
 
     try:
@@ -59,61 +55,57 @@ def run():
             check.exit(Status.UNKNOWN, "no luns found")
         for lun in Lun.get_collection():
             lun.get(fields="space")
-            logger.debug(f"lun info for {lun.name}\n{lun.__dict__}")
             if (args.exclude or args.include) and item_filter(args,lun.name):
+                logger.info(f"LUN {lun.name} filtered out and removed from check")
                 luns_count -= 1
                 continue
+            logger.debug(f"lun info for {lun.name}\n{lun.__dict__}")
 
-            pctUsage = to_percent(lun.space.size,lun.space.used)
-            unitPerf = {'label': f'{lun.name}_space',
-                    'value': lun.space.used,
-                    'uom': 'B',
-                    'min': 0,
-                    'max': lun.space.size,
-                    }
-            pctPerf = {
-                'label': f'{lun.name}_percent',
-                'value': pctUsage,
-                'uom': '%',
-                'min': 0,
-                'max': 100,
+            value = {
+                'usage': bytes_to_uom(lun.space.used, '%', lun.space.size),
+                'used': lun.space.used,
+                'free': lun.space.size - lun.space.used,
+                'max': lun.space.size
             }
-            if args.unit and '%' in args.unit:
-                pctPerf['threshold'] = check.threshold
-                check.add_perfdata(**pctPerf)
-                unitPerf['warning'] = percent_to(lun.space.size,args.warning)
-                unitPerf['critical'] = percent_to(lun.space.size,args.critical)
-                check.add_perfdata(**unitPerf)
-                check.add_message(
-                    check.threshold.get_status(pctUsage),
-                    f"{lun.name} (Usage {bytes_to(lun.space.used,'GB')}/{bytes_to(lun.space.size,'GB')}GB {pctUsage}%)"
-                )
-            elif args.unit:
-                unitPerf['warning'] = to_bytes(args.warning,args.unit)
-                unitPerf['critical'] = to_bytes(args.critical,args.unit)
-                check.add_perfdata(**unitPerf)
-                pctPerf['warning'] = to_percent(lun.space.size,unitPerf['warning'])
-                pctPerf['critical'] = to_percent(lun.space.size,unitPerf['critical'])
-                check.add_perfdata(**pctPerf)
-                check.add_message(
-                    check.threshold.get_status(bytes_to(lun.space.used, args.unit)),
-                    f"{lun.name} (Usage {bytes_to(lun.space.used,args.unit)}/{bytes_to(lun.space.size,args.unit)}{args.unit} {pctUsage}%)"
-                )
-            else:
-                unitPerf['threshold'] = check.threshold
-                check.add_perfdata(**unitPerf)
-                pctPerf['warning'] = to_percent(lun.space.size,args.warning)
-                pctPerf['critical'] = to_percent(lun.space.size,args.critical)
-                check.add_perfdata(**pctPerf)
-                check.add_message(
-                    check.threshold.get_status(lun.space.used),
-                    f"{lun.name} (Usage {lun.space.used}/{lun.space.size}B {pctUsage}%)"
-                )
-        (code, message) = check.check_messages(separator='\n  ', allok=f"all {luns_count} luns are ok")
+           
+            for metric in ['usage', 'used', 'free']:
+                opts = {}
+                if metric in args.metric:
+                    typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
+                    threshold = {}
+                    opts['threshold'] = {}
+                    if '%' in uom:
+                        s = check.threshold.get_status(value['usage'])
+                        out = f"{value[typ] :.2f}%"
+                        if args.warning:
+                            threshold['warning'] = args.warning
+                        if args.critical:
+                            threshold['critical'] = args.critical
+                    else:
+                        s = check.threshold.get_status(bytes_to_uom(value[typ],uom))
+                        if 'free' in typ:
+                            pct = 100 - value['usage']
+                        else:
+                            pct = value['usage']
+
+                        out = f"{bytes_to_uom(value[metric],uom)}{uom} ({pct :.2f} %) "
+                        if args.warning:
+                            threshold['warning'] = str(uom_to_bytes(args.warning,uom))
+                        if args.critical:
+                            threshold['critical'] = str(uom_to_bytes(args.critical,uom))
+                    opts['threshold'] = Threshold(**threshold)
+                    if s != Status.OK:
+                        check.add_message(s, f"{args.metric} on {lun.name} is: {out}")
+
+                puom = '%' if metric == 'usage' else 'B'
+                check.add_perfmultidata(lun.name, 'aggregates',  label=metric, value=value[metric], uom=puom, **opts)
+        (code, message) = check.check_messages(separator=' ',allok=f"all {luns_count} luns are fine")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+    except Exception as error:
+        logger.exception(error)
     
 if __name__ == "__main__":
     run()
