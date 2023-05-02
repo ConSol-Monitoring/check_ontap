@@ -57,7 +57,7 @@ def bytes_to_uom(value, uom, maximum=None, bsize=1024) -> None:
     a = {'kB' : 1, 'MB': 2, 'GB' : 3, 'TB' : 4, 'PB' : 5, 'EB' : 6 }
     try:
         if '%' in uom and maximum:
-            r = (float(value) / int(maximum) ) * 100
+            r = round((float(value) / int(maximum) ) * 100,2)
         else:
             r = round(float(value) / (bsize ** a[uom]),3)
     except Exception as err:
