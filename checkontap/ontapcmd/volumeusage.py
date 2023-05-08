@@ -20,9 +20,10 @@ from monplugin import Check,Status,Threshold
 from netapp_ontap.resources import Volume
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,to_percent,percent_to,to_bytes,bytes_to,item_filter,severity
+from ..tools.helper import setup_connection,to_percent,percent_to,to_bytes,bytes_to,item_filter,severity,bytes_to_uom,uom_to_bytes
 
 __cmd__ = "volume-usage"
+description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB"
 """
 Volume({
     'files': {'maximum': 31122, 'used': 102},
@@ -64,14 +65,15 @@ Volume({
 """
 def run():
     parser = cli.Parser()
+    parser.set_description(description)
     parser.set_epilog("Name of SVM will be prepended automaticaly to the volume name")
     parser.add_required_arguments(cli.Argument.WARNING, cli.Argument.CRITICAL)
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
                                   cli.Argument.NAME,
                                   cli.Argument.UNIT,
+                                  cli.Argument.METRIC,
                                   cli.Argument.INODE_WARN, cli.Argument.INODE_CRIT,
-                                  cli.Argument.SNAP_WARN, cli.Argument.SNAP_CRIT,
                                   )
     args = parser.get_args()
 
@@ -84,7 +86,7 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     check = Check()
-
+    #check = Check(threshold = Threshold(args.warning or None, args.critical or None))
     setup_connection(args.host, args.api_user, args.api_pass)
     vols = []
 
@@ -102,11 +104,14 @@ def run():
                 logger.info(f"But item filter exclude: '{args.exclude}' or include: '{args.include}' has matched {vol.name}")
                 volumes_count -= 1
                 continue
-            logger.debug(f"SVM {vol.svm.name} VOLUME {vol.name}\n{vol}")
+            logger.info(f"SVM {vol.svm.name} VOLUME {vol.name}")
+            logger.debug(f"{vol}")
             vols.append(vol)
 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+    except Exception as error:
+        logger.exception(error)
 
     for vol in vols:
         v = {
@@ -114,12 +119,14 @@ def run():
             'space': {
                 'max': vol.space.size,
                 'used': vol.space.used,
-                'pct': to_percent(vol.space.size, vol.space.used)
+                'usage': bytes_to_uom(vol.space.used, '%', vol.space.size),
+                'free': vol.space.size - vol.space.used
             },
             'inodes': {
                 'max': vol.files.maximum,
                 'used': vol.files.used,
-                'pct': to_percent(vol.files.maximum, vol.files.used)
+                'usage': bytes_to_uom(vol.files.used, '%', vol.files.maximum),
+                'free': vol.files.maximum - vol.files.used
             },
         }
         if hasattr(vol.space, 'afs_total'):
@@ -130,15 +137,27 @@ def run():
             v['snapshot'] = {
                 'max': vol.space.snapshot.reserve_size,
                 'used': vol.space.snapshot.used,
-                'pct': to_percent(vol.space.snapshot.reserve_size, vol.space.snapshot.used)
+                'usage': bytes_to_uom(vol.space.snapshot.used, '%' ,vol.space.snapshot.reserve_size)
             }
         else:
             v['snapshot'] = {
                 'max': 0,
                 'used': vol.space.snapshot.used,
-                'pct': 0
+                'usage': bytes_to_uom(vol.space.size, '%', vol.space.snapshot.used)
             }
-            
+        
+        for metric in ['usage', 'used', 'free']:
+            if metric in args.metric:
+                typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
+                usage = Threshold(args.warning or None, args.critical or None)
+                inodes = Threshold(args.inode_warn or None, args.inode_crit or None)
+                if '%' in uom:
+                    sv = usage.get_status(v['space']['usage'])
+                    si = inodes.get_status(v['inodes']['usage'])
+                else:
+                    sv = usage.get_status(uom_to_bytes(v['space'][typ],uom))
+                    si = inodes.get_status(uom_to_bytes(v['inodes'][typ]))
+                    
         # unchecked perfdata
         check.add_perfmultidata(v['name'], 'volume_usage', label="data_total",value=v['data_total'], uom="B")
         # Volume usage

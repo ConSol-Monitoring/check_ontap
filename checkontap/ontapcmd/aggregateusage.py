@@ -90,17 +90,18 @@ def run():
 
     try:
         aggr_count = Aggregate.count_collection()
-        logger.debug(f"found {aggr_count} Aggregates")
+        logger.info(f"found {aggr_count} Aggregates")
         if aggr_count == 0:
             check.exit(Status.UNKNOWN, "no aggregates found")
 
         for aggr in Aggregate.get_collection():
             aggr.get(fields="space,uuid")
             if (args.exclude or args.include) and item_filter(args,aggr.name):
-                logger.debug(f"{aggr.name} filtered out and removed from check")
+                logger.info(f"{aggr.name} filtered out and removed from check")
                 aggr_count -= 1
                 continue
-            logger.debug(f"Aggregate {aggr.name}\n{aggr.__dict__}")
+            logger.info(f"Aggregate {aggr.name}")
+            logger.debug(f"{aggr.__dict__}")
             
             plex_count = Plex.count_collection(aggr.uuid)
             if plex_count != 0:
