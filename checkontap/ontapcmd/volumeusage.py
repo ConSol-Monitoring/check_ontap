@@ -20,10 +20,10 @@ from monplugin import Check,Status,Threshold
 from netapp_ontap.resources import Volume
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,to_percent,percent_to,to_bytes,bytes_to,item_filter,severity,bytes_to_uom,uom_to_bytes
+from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
 
 __cmd__ = "volume-usage"
-description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB"
+description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB. Inodes thresholds are alway given in %"
 """
 Volume({
     'files': {'maximum': 31122, 'used': 102},
@@ -71,7 +71,6 @@ def run():
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
                                   cli.Argument.NAME,
-                                  cli.Argument.UNIT,
                                   cli.Argument.METRIC,
                                   cli.Argument.INODE_WARN, cli.Argument.INODE_CRIT,
                                   )
@@ -86,7 +85,6 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     check = Check()
-    #check = Check(threshold = Threshold(args.warning or None, args.critical or None))
     setup_connection(args.host, args.api_user, args.api_pass)
     vols = []
 
@@ -108,107 +106,112 @@ def run():
             logger.debug(f"{vol}")
             vols.append(vol)
 
+        for vol in vols:
+            v = {
+                'name': f"{vol.svm.name}_{vol.name}",
+                'space': {
+                    'max': vol.space.size,
+                    'used': vol.space.used,
+                    'usage': bytes_to_uom(vol.space.used, '%', vol.space.size),
+                    'free': vol.space.size - vol.space.used
+                },
+                'inodes': {
+                    'max': vol.files.maximum,
+                    'used': vol.files.used,
+                    'usage': bytes_to_uom(vol.files.used, '%', vol.files.maximum),
+                    'free': vol.files.maximum - vol.files.used
+                },
+            }
+            if hasattr(vol.space, 'afs_total'):
+                v['data_total'] = vol.space.afs_total
+            else:
+                v['data_total'] = vol.space.size
+            if hasattr(vol.space.snapshot, 'reserve_size') and vol.space.snapshot.reserve_size > 0:
+                v['snapshot'] = {
+                    'max': vol.space.snapshot.reserve_size,
+                    'used': vol.space.snapshot.used,
+                    'usage': bytes_to_uom(vol.space.snapshot.used, '%' ,vol.space.snapshot.reserve_size)
+                }
+            elif vol.space.snapshot.used > 0:
+                v['snapshot'] = {
+                    'max': 0,
+                    'used': vol.space.snapshot.used,
+                    'usage': bytes_to_uom(vol.space.snapshot.used, '%', vol.space.size)
+                }
+            else:
+                v['snapshot'] = {
+                    'max': 0,
+                    'used': vol.space.snapshot.used,
+                    'usage': 0
+                }
+
+            # Space
+            usage = Threshold(args.warning or None, args.critical or None)
+
+            for metric in ['usage', 'used', 'free']:
+                opts = {}
+                if metric in args.metric:
+                    typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
+                    threshold = {}
+                    opts['threshold'] = {}
+                    if '%' in uom:
+                        s = usage.get_status(v['space']['usage'])
+                        out = f"{v['space'][typ] :.2f}%"
+                        if args.warning:
+                            threshold['warning'] = args.warning
+                        if args.critical:
+                            threshold['critical'] = args.critical
+                    else:
+                        s = usage.get_status(bytes_to_uom(v['space'][typ],uom))
+                        if 'free' in typ:
+                            pct = 100 - v['space']['usage']
+                        else:
+                            pct = v['space']['usage']
+                        out = f"{bytes_to_uom(v['space'][typ],uom)}{uom} ({pct :.2f}%)"
+                        if args.warning:
+                            threshold['warning'] = str(uom_to_bytes(args.warning,uom))
+                        if args.critical:
+                            threshold['critical'] = str(uom_to_bytes(args.critical,uom))
+
+                    opts['threshold'] = Threshold(**threshold)
+
+                    if s != Status.OK:
+                        check.add_message(s, f"{args.metric} on {v['name']} is: {out}")
+
+                puom = '%' if metric == 'usage' else 'B'
+                check.add_perfmultidata(v['name'], 'volume', label=metric, value=v['space'][metric], uom=puom, **opts)
+
+            # data_total as perdate
+            check.add_perfmultidata(v['name'], 'volume', label='data_total' ,value=v['data_total'], uom='B')
+
+            # Inode usage
+            if args.inode_warning or args.inode_critical:
+                inodes = Threshold(args.inode_warning or None, args.inode_critical or None)
+                opts = {}
+                opts['threshold'] = {}
+                threshold = {}
+                s = inodes.get_status(v['inodes']['usage'])
+                if args.inode_warning:
+                    threshold['warning'] = args.inode_warning
+                if args.inode_critical:
+                    threshold['critical'] = args.inode_critical
+
+                opts['threshold']= Threshold(**threshold)
+                if s != Status.OK:
+                    check.add_message(s, f"Inodes usage on {v['name']} is {v['inodes']['usage']}%")
+
+            check.add_perfmultidata(v['name'], 'volume', label='inodes' ,value=v['inodes']['usage'], uom='%', **opts)
+
+            # Snapshot usage just as perfdata
+            check.add_perfmultidata(v['name'], 'volume', label='snapshot' ,value=v['snapshot']['usage'], uom='%')
+
+        (code, message) = check.check_messages(separator='\n  ',separator_all='\n',allok=f"all {volumes_count} volumes are ok")
+        check.exit(code=code,message=f"{message}")
+
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
     except Exception as error:
         logger.exception(error)
-
-    for vol in vols:
-        v = {
-            'name': f"{vol.svm.name}_{vol.name}",
-            'space': {
-                'max': vol.space.size,
-                'used': vol.space.used,
-                'usage': bytes_to_uom(vol.space.used, '%', vol.space.size),
-                'free': vol.space.size - vol.space.used
-            },
-            'inodes': {
-                'max': vol.files.maximum,
-                'used': vol.files.used,
-                'usage': bytes_to_uom(vol.files.used, '%', vol.files.maximum),
-                'free': vol.files.maximum - vol.files.used
-            },
-        }
-        if hasattr(vol.space, 'afs_total'):
-            v['data_total'] = vol.space.afs_total
-        else:
-            v['data_total'] = vol.space.size
-        if hasattr(vol.space.snapshot, 'reserve_size'):
-            v['snapshot'] = {
-                'max': vol.space.snapshot.reserve_size,
-                'used': vol.space.snapshot.used,
-                'usage': bytes_to_uom(vol.space.snapshot.used, '%' ,vol.space.snapshot.reserve_size)
-            }
-        else:
-            v['snapshot'] = {
-                'max': 0,
-                'used': vol.space.snapshot.used,
-                'usage': bytes_to_uom(vol.space.size, '%', vol.space.snapshot.used)
-            }
-        
-        for metric in ['usage', 'used', 'free']:
-            if metric in args.metric:
-                typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
-                usage = Threshold(args.warning or None, args.critical or None)
-                inodes = Threshold(args.inode_warn or None, args.inode_crit or None)
-                if '%' in uom:
-                    sv = usage.get_status(v['space']['usage'])
-                    si = inodes.get_status(v['inodes']['usage'])
-                else:
-                    sv = usage.get_status(uom_to_bytes(v['space'][typ],uom))
-                    si = inodes.get_status(uom_to_bytes(v['inodes'][typ]))
-                    
-        # unchecked perfdata
-        check.add_perfmultidata(v['name'], 'volume_usage', label="data_total",value=v['data_total'], uom="B")
-        # Volume usage
-        t = {}
-        if args.unit and '%' in args.unit:
-            t['warning'] = percent_to(v['space']['max'],args.warning)
-            t['critical'] = percent_to(v['space']['max'],args.critical)
-        elif args.unit:
-            t['warning'] = to_bytes(args.warning,args.unit)
-            t['critical'] = to_bytes(args.critical,args.unit)
-        else:
-            t['warning'] = args.warning
-            t['critical'] = args.critical
-
-        usage = Threshold(**t)
-        output = (f"{v['name']} (Usage {bytes_to(v['space']['used'],'GB')}/{bytes_to(v['space']['max'],'GB')}GB {v['space']['pct']}%, Inodes {v['inodes']['pct']}%, Snapshots {v['snapshot']['pct']}%)")
-        check.add_message(usage.get_status(v['space']['used']),f"space {output}")
-        check.add_perfmultidata(v['name'], 'volume_usage',  label="space_used", value=v['space']['used'], uom="B", warning=t['warning'], critical=t['critical'], min=0, max=v['space']['max'])
-
-        # Inode usage
-        t = {}
-        if args.inode_warning:
-            t['warning'] = percent_to(v['inodes']['max'],args.inode_warning)
-        else:
-            t['warning'] = ""
-        if args.inode_critical:
-            t['critical'] = percent_to(v['inodes']['max'],args.inode_critical)
-        else:
-            t['critical'] = ""
-
-        inodes = Threshold(**t)
-        check.add_message(inodes.get_status(v['inodes']['used']),f"inodes {output}")
-        check.add_perfmultidata(v['name'], 'volume_usage',  label="inodes_used", value=v['inodes']['used'], warning=t['warning'], critical=t['critical'],min=0, max=v['inodes']['max'])
-
-        # Snapshot usage
-        t = {}
-        if args.snapshot_warning:
-            t['warning'] = percent_to(v['snapshot']['max'],args.snapshot_warning)
-        else:
-            t['warning'] = ""
-        if args.snapshot_critical:
-            t['critical'] = percent_to(v['snapshot']['max'],args.snapshot_critical)
-        else:
-            t['critical'] = ""
-
-        snap = Threshold(**t)
-        check.add_message(snap.get_status(v['snapshot']['used']),f"snaps {output}")
-        check.add_perfmultidata(v['name'], 'volume_usage',  label="snap_used", value=v['snapshot']['used'], uom="B", warning=t['warning'], critical=t['critical'],min=0, max=v['inodes']['max'])
-        
-    (code, message) = check.check_messages(separator='\n  ',separator_all='\n',allok=f"all {volumes_count} volumes are ok")
-    check.exit(code=code,message=f"{message}")
 
 if __name__ == "__main__":
     run()
