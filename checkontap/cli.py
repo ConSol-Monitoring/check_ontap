@@ -24,7 +24,8 @@ import importlib
 import pkgutil
 import checkontap.ontapcmd
 from checkontap.tools import cli
-from checkontap import OntapConnectException, CheckOntapTimeout
+from checkontap import CheckOntapTimeout
+from netapp_ontap import utils
 import urllib3.exceptions
 import requests
 requests.packages.urllib3.disable_warnings()
@@ -89,9 +90,13 @@ def run():
 
 def main():
     import traceback
+    
     dependencies()
-    logging.basicConfig(stream=sys.stdout)
+    
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(module)s %(funcName)s %(lineno)d %(message)s', stream=sys.stdout)
     logging.getLogger().disabled = True
+    utils.DEBUG = 1
+    utils.LOG_ALL_API_CALLS = 1
 
     try:
         run()
