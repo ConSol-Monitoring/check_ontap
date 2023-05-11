@@ -98,7 +98,7 @@ def run():
                         check.add_message(s, f"{args.metric} on {lun.name} is: {out}")
 
                 puom = '%' if metric == 'usage' else 'B'
-                check.add_perfmultidata(lun.name, 'aggregates',  label=metric, value=value[metric], uom=puom, **opts)
+                check.add_perfmultidata(lun.name, 'lun',  label=metric, value=value[metric], uom=puom, **opts)
         (code, message) = check.check_messages(separator=' ',allok=f"all {luns_count} luns are fine")
         check.exit(code=code,message=message)
 
