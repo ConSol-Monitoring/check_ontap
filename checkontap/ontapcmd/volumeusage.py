@@ -25,6 +25,7 @@ from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uo
 __cmd__ = "volume-usage"
 description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB. Inodes thresholds are alway given in %"
 """
+space.used + space.available + snapshot.reserve_available = space.size
 Volume({
     'files': {'maximum': 31122, 'used': 102},
     'name': 'foo_root',
@@ -109,11 +110,12 @@ def run():
         for vol in vols:
             v = {
                 'name': f"{vol.svm.name}_{vol.name}",
+                'data_total': vol.space.size,
                 'space': {
                     'max': vol.space.size,
                     'used': vol.space.used,
                     'usage': bytes_to_uom(vol.space.used, '%', vol.space.size),
-                    'free': vol.space.size - vol.space.used
+                    'free': vol.space.available
                 },
                 'inodes': {
                     'max': vol.files.maximum,
@@ -123,9 +125,7 @@ def run():
                 },
             }
             if hasattr(vol.space, 'afs_total'):
-                v['data_total'] = vol.space.afs_total
-            else:
-                v['data_total'] = vol.space.size
+                v['space']['usage'] = bytes_to_uom(vol.space.used, '%', vol.space.afs_total)
             if hasattr(vol.space.snapshot, 'reserve_size') and vol.space.snapshot.reserve_size > 0:
                 v['snapshot'] = {
                     'max': vol.space.snapshot.reserve_size,

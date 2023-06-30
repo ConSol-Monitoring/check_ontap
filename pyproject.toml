@@ -6,7 +6,7 @@ requires = ["flit_core >=3.2,<4"]
 name = "checkontap"
 readme = "README.md"
 description = "check_ontap monitoring plugin"
-version = "0.1a7"
+version = "0.1a8"
 requires-python = ">= 3.6"
 authors = [
     { name = "Matthias Gallinger", email = "matthias.gallinger@consol.de" }

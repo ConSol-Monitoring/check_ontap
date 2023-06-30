@@ -17,14 +17,20 @@
 import argparse
 import getpass
 import os
-#from re import A
-#import requests
-#from requests.packages.urllib3.exceptions import InsecureRequestWarning
-#requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-#from pprint import pprint as pp
+import signal
+from checkontap import CheckOntapTimeout
 
 __author__ = "ConSol"
 
+def timeout_handler(signum, frame):
+    raise CheckOntapTimeout("Timeout reached")
+
+def set_timeout(seconds=None, handler=None):
+    if seconds is None:
+        seconds = int(os.environ.get("TIMEOUT", "30"))
+    signal.signal(signal.SIGALRM, (handler or timeout_handler))
+    signal.alarm(seconds)
+    
 class EnvDefault(argparse.Action):
     def __init__(self, envvar, required=True, default=None, **kwargs):
         if not default and envvar:
