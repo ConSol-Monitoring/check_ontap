@@ -143,7 +143,10 @@ def check_multipath(check,logger,args,Disks):
             check.add_message(Status.WARNING, f"Disk {disk.name:7} on bay {disk.bay:2} of node {disk.node.name} has {len(disk.paths)} paths")
         count += 1
     check.add_perfdata(label=f"total",value=int(count))
-    check.add_message(Status.OK,f"{count} disks has symetric paths")
+    if count == 1:
+        check.add_message(Status.OK,f"{count} disk has symmetric paths")
+    else:
+        check.add_message(Status.OK,f"{count} disks have symmetric paths")
 
 def check_diskstate(check,logger,args,Disks):
     out = {}
