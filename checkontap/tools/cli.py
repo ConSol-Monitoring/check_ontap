@@ -211,6 +211,7 @@ class Argument:
         'options': {
             'action': 'store',
             'default': 'usage',
+            'choices': ['%', 'free_kB', 'used_kB', 'free_MB', 'used_MB', 'free_GB', 'used_GB', 'free_TB', 'used_TB', 'free_PB', 'used_PB'],
             'help': 'The metric to apply the thresholds on, defaults to `usage`, can be: '
                     'usage (in percent), free and used. '
                     'free and used are measured in bytes. You can one of these suffixes: '
