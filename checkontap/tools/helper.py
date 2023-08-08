@@ -17,7 +17,6 @@ import logging
 from netapp_ontap import config, HostConnection
 import re
 
-
 # Connect to Host
 def setup_connection(cluster: str, api_user: str, api_pass: str) -> None:
     """Configure the default connection for the application"""

@@ -16,14 +16,14 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from monplugin import Check,Status,Threshold
+from monplugin import Check,Status,Threshold, Range
 from netapp_ontap.resources import Volume
 from netapp_ontap import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
 
 __cmd__ = "volume-usage"
-description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB. Inodes thresholds are alway given in %"
+description = f"Mode {__cmd__} with -m / --metric usage or size description like used_GB. Inodes thresholds are alway given in %"
 """
 space.used + space.available + snapshot.reserve_available = space.size
 Volume({
@@ -64,6 +64,14 @@ Volume({
         'full_threshold_percent': 98,
         'snapshot': {'used': 4509696, 'reserve_available': 49176576, 'reserve_percent': 5, 'space_used_percent': 8, 'autodelete_enabled': False, 'autodelete_trigger': 'volume', 'reserve_size': 53686272}}, 'uuid': 'ec5e675c-b124-11ed-8cdc-d039ea94786e'})
 """
+def range_in_bytes(r: Range, uom):
+    start = uom_to_bytes(r.start, uom)
+    end = uom_to_bytes(r.end, uom)
+
+    return ('' if r.outside else '@') + \
+        ('~' if start == float('-inf') else str(start)) + \
+        ":" + ('' if end == float('+inf') else str(end))
+
 def run():
     parser = cli.Parser()
     parser.set_description(description)
@@ -126,6 +134,8 @@ def run():
             }
             if hasattr(vol.space, 'afs_total'):
                 v['space']['usage'] = bytes_to_uom(vol.space.used, '%', vol.space.afs_total)
+                v['space']['max'] = vol.space.afs_total
+        
             if hasattr(vol.space.snapshot, 'reserve_size') and vol.space.snapshot.reserve_size > 0:
                 v['snapshot'] = {
                     'max': vol.space.snapshot.reserve_size,
@@ -150,8 +160,8 @@ def run():
 
             for metric in ['usage', 'used', 'free']:
                 opts = {}
+                typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
                 if metric in args.metric:
-                    typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
                     threshold = {}
                     opts['threshold'] = {}
                     if '%' in uom:
@@ -169,20 +179,23 @@ def run():
                             pct = v['space']['usage']
                         out = f"{bytes_to_uom(v['space'][typ],uom)}{uom} ({pct :.2f}%)"
                         if args.warning:
-                            threshold['warning'] = str(uom_to_bytes(args.warning,uom))
+                            threshold['warning'] = range_in_bytes(Range(args.warning), uom)
                         if args.critical:
-                            threshold['critical'] = str(uom_to_bytes(args.critical,uom))
+                            threshold['critical'] = range_in_bytes(Range(args.critical), uom)
 
                     opts['threshold'] = Threshold(**threshold)
+                    puom = '%' if metric == 'usage' else 'B'
+                    check.add_perfdata(label=f"{v['name']} {typ}", value=v['space'][typ], uom=puom, **opts)
 
                     if s != Status.OK:
                         check.add_message(s, f"{args.metric} on {v['name']} is: {out}")
 
-                puom = '%' if metric == 'usage' else 'B'
-                check.add_perfmultidata(v['name'], 'volume', label=metric, value=v['space'][metric], uom=puom, **opts)
-
+                else:
+                    puom = '%' if metric == 'usage' else 'B'
+                    check.add_perfdata(label=f"{v['name']} {metric}", value=v['space'][metric], uom=puom)
+                    
             # data_total as perdate
-            check.add_perfmultidata(v['name'], 'volume', label='data_total' ,value=v['data_total'], uom='B')
+            check.add_perfdata(label=f"{v['name']} total",value=v['space']['max'], uom='B')
 
             # Inode usage
             if args.inode_warning or args.inode_critical:
@@ -195,17 +208,18 @@ def run():
                     threshold['warning'] = args.inode_warning
                 if args.inode_critical:
                     threshold['critical'] = args.inode_critical
-
                 opts['threshold']= Threshold(**threshold)
+                
                 if s != Status.OK:
                     check.add_message(s, f"Inodes usage on {v['name']} is {v['inodes']['usage']}%")
-
-            check.add_perfmultidata(v['name'], 'volume', label='inodes' ,value=v['inodes']['usage'], uom='%', **opts)
+                check.add_perfdata(label=f"{v['name']} inodes usage", value=v['inodes']['usage'], uom="%", **opts)
+            else:
+                check.add_perfdata(label=f"{v['name']} inodes usage", value=v['inodes']['usage'], uom="%")
 
             # Snapshot usage just as perfdata
-            check.add_perfmultidata(v['name'], 'volume', label='snapshot' ,value=v['snapshot']['usage'], uom='%')
+            check.add_perfdata(label=f"{v['name']} snapshot usage" ,value=v['snapshot']['usage'], uom='%')
 
-        (code, message) = check.check_messages(separator='\n  ',separator_all='\n',allok=f"all {volumes_count} volumes are ok")
+        (code, message) = check.check_messages(separator='\n  ',allok=f"all {volumes_count} volumes are ok")
         check.exit(code=code,message=f"{message}")
 
     except NetAppRestError as error:
