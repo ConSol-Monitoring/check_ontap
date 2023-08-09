@@ -35,7 +35,7 @@ def timeout_handler(signum, frame):
 
 def set_timeout(seconds=None, handler=None):
     if seconds is None:
-        seconds = int(os.environ.get("TIMEOUT", "30"))
+        seconds = int(os.environ.get("TIMEOUT", "60"))
     signal.signal(signal.SIGALRM, (handler or timeout_handler))
     signal.alarm(seconds)
     
@@ -95,6 +95,7 @@ def main():
     
     logging.basicConfig(format='%(asctime)s %(levelname)s %(module)s %(funcName)s %(lineno)d %(message)s', stream=sys.stdout)
     logging.getLogger().disabled = True
+    logging.getLogger("urllib3").propagate = False
     utils.DEBUG = 1
     utils.LOG_ALL_API_CALLS = 1
 
@@ -106,7 +107,12 @@ def main():
         else:
             sys.exit(e.code)
     except urllib3.exceptions.NewConnectionError as e:
-        print(f"#---> {e}")
+        print(f"UNKNOWN - connection issue {e}")
+        sys.exit(3)
+    except CheckOntapTimeout as e:
+        print("UNKNOWN - Timout reached")
+        #traceback.print_exc(file=sys.stdout)
+        sys.exit(3)
     except Exception as e:
         print(f"UNKNOWN - Unhandled exception: {e}")
         #traceback.print_exc()

@@ -18,7 +18,7 @@
 import logging
 from monplugin import Check,Status
 from netapp_ontap.resources import IpInterface
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity
 
@@ -84,7 +84,7 @@ def run():
             IpInts.append(IpInt)
 
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        check.exit(Status.UNKNOWN, "Error => {}".format(error))
 
     count = 0
 

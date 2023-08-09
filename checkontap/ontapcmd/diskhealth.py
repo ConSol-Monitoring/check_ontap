@@ -18,7 +18,7 @@
 import logging
 from monplugin import Check,Status
 from netapp_ontap.resources import Disk,Software
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity,compareVersion
 import re
@@ -103,7 +103,7 @@ def run():
             check.exit(Status.UNKNOWN, "no disks found")
         Disks = Disk.get_collection()
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, f"ERROR => {error.http_err_response.http_response.text}")
+        check.exit(Status.UNKNOWN, f"ERROR => {error}")
 
     if args.mode == "multipath":
         minimumVersion = "9.9"

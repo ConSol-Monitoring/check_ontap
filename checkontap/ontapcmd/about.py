@@ -20,7 +20,7 @@ from dataclasses import fields
 import logging
 from monplugin import Check,Status
 from netapp_ontap.resources import Software
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,severity
 
@@ -51,7 +51,7 @@ def run():
         logger.debug(f"Software info \n{software.__dict__}")
         check.add_message(Status.OK,f"current version id {software['version']}")
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        check.exit(Status.UNKNOWN, "Error => {}".format(error))
 
     (code, message) = check.check_messages(separator="\n")
     check.exit(code=code,message=message)

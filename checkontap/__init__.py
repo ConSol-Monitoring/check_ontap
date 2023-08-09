@@ -21,5 +21,5 @@ class CheckOntapException(Exception):
 class CheckOntapTimeout(BaseException):
     pass
 
-class OntapConnectException(Exception):
+class CheckOntapConnectException(Exception):
     pass

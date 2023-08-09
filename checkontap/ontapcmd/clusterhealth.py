@@ -18,7 +18,7 @@
 import logging
 from monplugin import Check,Status
 from netapp_ontap.resources import Cluster, Node, IpInterface
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,severity,item_filter
 
@@ -69,7 +69,7 @@ def run():
                     Interface.get()
                     interfaces.append(Interface)
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        check.exit(Status.UNKNOWN, "Error => {}".format(error))
     #
     # Cluster health check
     #

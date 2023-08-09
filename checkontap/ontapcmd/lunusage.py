@@ -18,7 +18,7 @@
 import logging
 from monplugin import Check,Status,Threshold,Range
 from netapp_ontap.resources import Lun
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,range_in_bytes
 
@@ -105,7 +105,7 @@ def run():
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        check.exit(Status.UNKNOWN, "Error => {}".format(error))
     except Exception as error:
         logger.exception(error)
     

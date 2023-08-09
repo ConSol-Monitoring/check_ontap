@@ -19,7 +19,7 @@ import logging
 import json
 from monplugin import Check,Status
 from netapp_ontap.resources import CLI
-from netapp_ontap import NetAppRestError
+from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,severity,item_filter
 
@@ -90,7 +90,7 @@ def run():
                 check.add_message(Status.UNKNOWN,text)
         check.add_message(Status.OK,f"all {response.http_response.json()['num_records']} sensors are fine")
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error.http_err_response.http_response.text))
+        check.exit(Status.UNKNOWN, "Error => {}".format(error))
 
     
     (code, message) = check.check_messages(separator="\n")
