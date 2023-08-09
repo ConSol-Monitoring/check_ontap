@@ -76,7 +76,8 @@ def run():
                 'multipath',
                 'diskhealth',
             ],
-        'help': 'which diskhealth mode to check',
+            'default': 'diskhealth',
+            'help': 'which diskhealth mode to check',
         }
     })
     args = parser.get_args()
