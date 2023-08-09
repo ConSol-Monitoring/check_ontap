@@ -20,7 +20,7 @@ from monplugin import Check,Status,Threshold, Range
 from netapp_ontap.resources import Volume
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
+from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,range_in_bytes
 
 __cmd__ = "volume-usage"
 description = f"Mode {__cmd__} with -m / --metric usage or size description like used_GB. Inodes thresholds are alway given in %"
@@ -64,13 +64,6 @@ Volume({
         'full_threshold_percent': 98,
         'snapshot': {'used': 4509696, 'reserve_available': 49176576, 'reserve_percent': 5, 'space_used_percent': 8, 'autodelete_enabled': False, 'autodelete_trigger': 'volume', 'reserve_size': 53686272}}, 'uuid': 'ec5e675c-b124-11ed-8cdc-d039ea94786e'})
 """
-def range_in_bytes(r: Range, uom):
-    start = uom_to_bytes(r.start, uom)
-    end = uom_to_bytes(r.end, uom)
-
-    return ('' if r.outside else '@') + \
-        ('~' if start == float('-inf') else str(start)) + \
-        ":" + ('' if end == float('+inf') else str(end))
 
 def run():
     parser = cli.Parser()

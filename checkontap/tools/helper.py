@@ -15,6 +15,7 @@
 
 import logging
 from netapp_ontap import config, HostConnection
+from monplugin import Range
 import re
 
 # Connect to Host
@@ -92,6 +93,14 @@ def to_bytes(bytes, start, bsize=1024) -> None:
     a = {'kB' : 1, 'MB': 2, 'GB' : 3, 'TB' : 4, 'PB' : 5, 'EB' : 6 }
     return round(float(bytes) * (bsize ** a[start]),3)
 
+def range_in_bytes(r: Range, uom):
+    start = uom_to_bytes(r.start, uom)
+    end = uom_to_bytes(r.end, uom)
+
+    return ('' if r.outside else '@') + \
+        ('~' if start == float('-inf') else str(start)) + \
+        ":" + ('' if end == float('+inf') else str(end))
+        
 # Security level mapping
 def severity(level) -> None:
     if level > 5:

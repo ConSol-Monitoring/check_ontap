@@ -16,11 +16,11 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-from monplugin import Check,Status,Threshold
+from monplugin import Check,Status,Threshold,Range
 from netapp_ontap.resources import Lun
 from netapp_ontap import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
+from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,range_in_bytes
 
 __cmd__ = "lun-usage"
 description = f"Mode {__cmd__} with -m / --metric usage (%) or size desciption like used_GB"
@@ -70,6 +70,7 @@ def run():
            
             for metric in ['usage', 'used', 'free']:
                 opts = {}
+                puom = '%' if metric == 'usage' else 'B'
                 if metric in args.metric:
                     typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
                     threshold = {}
@@ -90,16 +91,17 @@ def run():
 
                         out = f"{bytes_to_uom(value[metric],uom)}{uom} ({pct :.2f} %) "
                         if args.warning:
-                            threshold['warning'] = str(uom_to_bytes(args.warning,uom))
+                            threshold['warning'] = range_in_bytes(Range(args.warning),uom)
                         if args.critical:
-                            threshold['critical'] = str(uom_to_bytes(args.critical,uom))
+                            threshold['critical'] = range_in_bytes(Range(args.critical),uom)
                     opts['threshold'] = Threshold(**threshold)
                     if s != Status.OK:
                         check.add_message(s, f"{args.metric} on {lun.name} is: {out}")
-
-                puom = '%' if metric == 'usage' else 'B'
-                check.add_perfmultidata(lun.name, 'lun',  label=metric, value=value[metric], uom=puom, **opts)
-        (code, message) = check.check_messages(separator=' ',allok=f"all {luns_count} luns are fine")
+                        
+                    check.add_perfdata(label=f"{lun.name} {metric}", value=value[metric], uom=puom, **opts)
+                check.add_perfdata(label=f"{lun.name} {metric}", value=value[metric], uom=puom)
+            check.add_perfdata(label=f"{lun.name} total", value=value['max'], uom=puom)
+        (code, message) = check.check_messages(separator='\n',allok=f"all {luns_count} luns are fine")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:
