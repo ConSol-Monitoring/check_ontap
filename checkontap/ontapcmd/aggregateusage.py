@@ -121,6 +121,7 @@ def run():
 
             for metric in ['usage','used','free']:
                 opts = {}
+                puom = '%' if metric == 'usage' else 'B'
                 if metric in args.metric:
                     typ, uom, *_ = (args.metric.split('_') + ['%' if 'usage' in args.metric else 'B'])
                     threshold = {}
@@ -147,10 +148,13 @@ def run():
                     opts['threshold'] = Threshold(**threshold)
                     if s != Status.OK:
                         check.add_message(s, f"{args.metric} on {aggr.name} is: {out}")
+                    check.add_perfdata(label=f"{aggr.name} {metric}", value=value['usage'], uom=puom, **opts)
+                else:
+                    check.add_perfdata(label=f"{aggr.name} {metric}", value=value[metric], uom=puom)
 
-                puom = '%' if metric == 'usage' else 'B'
-                check.add_perfmultidata(aggr.name, 'aggregates',  label=metric, value=value[metric], uom=puom, **opts)
-        (code, message) = check.check_messages(separator=' ',allok=f"all {aggr_count} aggregates are fine")
+            check.add_perfdata(label=f"{aggr.name} total", value=value['max'], uom='B')
+            
+        (code, message) = check.check_messages(separator='\n',allok=f"all {aggr_count} aggregates are fine")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:
