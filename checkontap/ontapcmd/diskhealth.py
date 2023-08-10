@@ -159,12 +159,21 @@ def check_diskstate(check,logger,args,Disks):
         disk.get()
         logger.debug(f"{disk}")
 
-        if hasattr(disk, 'outage') and not disk.container_type == "unassigned":
-           check.add_message(Status.WARNING,f"Disk {disk.name} is {disk.outage.reason.message}")
-           continue
+        #Aggregate = Disk is used as a physical disk in an aggregate.
+        #Broken = Disk is in broken pool.
+        #Foreign = Array LUN has been marked foreign.
+        #Labelmaint = Disk is in online label maintenance list.
+        #Maintenance = Disk is in maintenance center.
+        #Mediator = A mediator disk is a disk used on non-shared HA systems hosted by an external node which is used to communicate the viability of the storage failover between non-shared HA nodes.
+        #Remote = Disk belongs to the remote cluster.
+        #Shared = Disk is partitioned or in a storage pool.
+        #Spare = Disk is a spare disk.
+        #Unassigned = Disk ownership has not been assigned.
+        #Unknown = Container is currently unknown. This is the default setting.
+        #Unsupported = Disk is not supported.
 
-        if disk.container_type == "unassigned":
-            setattr(disk, 'state', "unassigned")
+        if not hasattr(disk, 'state'):
+            setattr(disk, 'state', disk.container_type)
 
         stateWarn = re.match('reconstructing', disk.state)
         stateCrit = re.match('(broken|offline)', disk.state)
@@ -173,14 +182,15 @@ def check_diskstate(check,logger,args,Disks):
             cType[disk.container_type] = 0
         cType[disk.container_type] += 1
 
-        if disk.container_type == "unassigned":
-            m = f"Disk {disk.name:7} on bay {disk.bay:2} of node unknown is {disk.state}"
-            out[disk.name] = {}
-            out[disk.name]['name'] = disk.name
-            out[disk.name]['state'] = disk.state
-            out[disk.name]['bay'] = disk.bay
-            out[disk.name]['node'] = "unknown"
-
+        out[disk.name] = {}
+        out[disk.name]['name'] = disk.name
+        out[disk.name]['state'] = disk.state
+        out[disk.name]['bay'] = disk.bay
+        out[disk.name]['node'] = disk.home_node.name if hasattr(disk, 'home_node') else "unknown"
+        
+        if disk.container_type in ["unassigned","unsupported","unknown"]:
+            m = f"Disk {disk.name:7} on bay {disk.bay:2} is {disk.container_type}"
+            check.add_message(Status.WARNING,m)
         elif disk.container_type != "remote":
             if disk.node.uuid != disk.home_node.uuid:
                 check.add_message(Status.WARNING, f"Disk {disk.name} is on node {disk.node.name} instead of {disk.home_node.name}")
@@ -189,17 +199,6 @@ def check_diskstate(check,logger,args,Disks):
                 check.add_message(Status.WARNING,m)
             elif stateCrit:
                 check.add_message(Status.CRITICAL,m)
-            else:
-                out[disk.name] = {}
-                out[disk.name]['name'] = disk.name
-                out[disk.name]['state'] = disk.state
-                out[disk.name]['bay'] = disk.bay
-                out[disk.name]['node'] = disk.home_node.name
-        else:
-            if disk.node.name != disk.home_node.name:
-                m = f"Disk {disk.name:7} on bay {disk.bay:2} of node {disk.home_node.name} is not on home node"
-                check.add_message(Status.WARNING,m)
-
 
     for c in cType.keys():
         check.add_perfdata(label=c,value=int(cType[c]))
