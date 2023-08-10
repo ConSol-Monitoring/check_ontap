@@ -26,41 +26,41 @@ import re
 __cmd__ = "disk-health"
 """
 Disk({
-    'rpm': 7200, 
+    'rpm': 7200,
     'node': {
-        'uuid': 'f3a35903-68ae-11e8-8898-4b3d2df62ccf', 
-        'name': 'acme01', 
+        'uuid': 'f3a35903-68ae-11e8-8898-4b3d2df62ccf',
+        'name': 'acme01',
         '_links': {'self': {'href': '/api/cluster/nodes/f3a35903-68ae-11e8-8898-4b3d2df62ccf'}}
-        }, 
-    'shelf': {'uid': '4713285323093248592'}, 
-    'fips_certified': False, 
+        },
+    'shelf': {'uid': '4713285323093248592'},
+    'fips_certified': False,
     'aggregates': [{
-        'uuid': 'fa49074c-5d93-4e5d-8d36-332226fcbe91', 
-        'name': 'aggr0_acme01', 
+        'uuid': 'fa49074c-5d93-4e5d-8d36-332226fcbe91',
+        'name': 'aggr0_acme01',
         '_links': {'self': {'href': '/api/storage/aggregates/fa49074c-5d93-4e5d-8d36-332226fcbe91'}}
-        }, 
-        {'uuid': '97e37d61-23b0-4917-85c8-ae9d5354bba5', 
-        'name': 'aggr1_acme01', 
+        },
+        {'uuid': '97e37d61-23b0-4917-85c8-ae9d5354bba5',
+        'name': 'aggr1_acme01',
         '_links': {'self': {'href': '/api/storage/aggregates/97e37d61-23b0-4917-85c8-ae9d5354bba5'}}
-        }], 
-    'vendor': 'NETAPP', 
-    'firmware_version': 'NA00', 
-    'usable_size': 3992785256448, 
-    'self_encrypting': False, 
-    'class': 'capacity', 
+        }],
+    'vendor': 'NETAPP',
+    'firmware_version': 'NA00',
+    'usable_size': 3992785256448,
+    'self_encrypting': False,
+    'class': 'capacity',
     'home_node': {
-        'uuid': 'f3a35903-68ae-11e8-8898-4b3d2df62ccf', 
-        'name': 'acme01', 
+        'uuid': 'f3a35903-68ae-11e8-8898-4b3d2df62ccf',
+        'name': 'acme01',
         '_links': {'self': {'href': '/api/cluster/nodes/f3a35903-68ae-11e8-8898-4b3d2df62ccf'}}
-        }, 
-    'container_type': 'shared', 
-    'name': '1.0.9', 
-    'uid': '5000CCA2:6938888C:00000000:00000000:00000000:00000000:00000000:00000000:00000000:00000000', 
-    'bay': 9, 
-    'model': 'X336_HAKPE04TA07', 
-    'serial_number': 'K7H02UUL', 
-    'type': 'fsas', 
-    'state': 'present', 
+        },
+    'container_type': 'shared',
+    'name': '1.0.9',
+    'uid': '5000CCA2:6938888C:00000000:00000000:00000000:00000000:00000000:00000000:00000000:00000000',
+    'bay': 9,
+    'model': 'X336_HAKPE04TA07',
+    'serial_number': 'K7H02UUL',
+    'type': 'fsas',
+    'state': 'present',
     'pool': 'pool0'})
 """
 
@@ -90,9 +90,9 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     check = Check()
-    
+
     setup_connection(args.host, args.api_user, args.api_pass)
-    
+
     try:
         software = Software()
         software.get(fields='version')
@@ -124,11 +124,11 @@ def check_multipath(check,logger,args,Disks):
     Minimum ONTAP v9.9 is required
     Disk({
         'paths': [
-            {'wwnn': '5000039a88191df8', 'port_name': 'B', 'initiator': '0d', 'port_type': 'sas', 'wwpn': '5000039a88191dfa'}, 
-            {'wwnn': '5000039a88191df8', 'port_name': 'A', 'initiator': '0a', 'port_type': 'sas', 'wwpn': '5000039a88191df9'}, 
-            {'wwnn': '5000039a88191df8', 'port_name': 'A', 'initiator': '0d', 'port_type': 'sas', 'wwpn': '5000039a88191df9'}, 
+            {'wwnn': '5000039a88191df8', 'port_name': 'B', 'initiator': '0d', 'port_type': 'sas', 'wwpn': '5000039a88191dfa'},
+            {'wwnn': '5000039a88191df8', 'port_name': 'A', 'initiator': '0a', 'port_type': 'sas', 'wwpn': '5000039a88191df9'},
+            {'wwnn': '5000039a88191df8', 'port_name': 'A', 'initiator': '0d', 'port_type': 'sas', 'wwpn': '5000039a88191df9'},
             {'wwnn': '5000039a88191df8', 'port_name': 'B', 'initiator': '0a', 'port_type': 'sas', 'wwpn': '5000039a88191dfa'}
-            ], 
+            ],
     """
     logger.info("starting multipath check")
     count = 0
@@ -158,6 +158,14 @@ def check_diskstate(check,logger,args,Disks):
             continue
         disk.get()
         logger.debug(f"{disk}")
+
+        if hasattr(disk, 'outage') and not disk.container_type == "unassigned":
+           check.add_message(Status.WARNING,f"Disk {disk.name} is {disk.outage.reason.message}")
+           continue
+
+        if disk.container_type == "unassigned":
+            setattr(disk, 'state', "unassigned")
+
         stateWarn = re.match('reconstructing', disk.state)
         stateCrit = re.match('(broken|offline)', disk.state)
 
@@ -165,7 +173,15 @@ def check_diskstate(check,logger,args,Disks):
             cType[disk.container_type] = 0
         cType[disk.container_type] += 1
 
-        if disk.container_type != "remote":
+        if disk.container_type == "unassigned":
+            m = f"Disk {disk.name:7} on bay {disk.bay:2} of node unknown is {disk.state}"
+            out[disk.name] = {}
+            out[disk.name]['name'] = disk.name
+            out[disk.name]['state'] = disk.state
+            out[disk.name]['bay'] = disk.bay
+            out[disk.name]['node'] = "unknown"
+
+        elif disk.container_type != "remote":
             if disk.node.uuid != disk.home_node.uuid:
                 check.add_message(Status.WARNING, f"Disk {disk.name} is on node {disk.node.name} instead of {disk.home_node.name}")
             m = f"Disk {disk.name:7} on bay {disk.bay:2} of node {disk.home_node.name} is {disk.state}"
