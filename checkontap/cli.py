@@ -110,7 +110,7 @@ def main():
         print(f"UNKNOWN - connection issue {e}")
         sys.exit(3)
     except CheckOntapTimeout as e:
-        print("UNKNOWN - Timout reached")
+        print("UNKNOWN - Timeout reached")
         #traceback.print_exc(file=sys.stdout)
         sys.exit(3)
     except Exception as e:
