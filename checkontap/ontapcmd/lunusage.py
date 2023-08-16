@@ -99,7 +99,8 @@ def run():
                         check.add_message(s, f"{args.metric} on {lun.name} is: {out}")
                         
                     check.add_perfdata(label=f"{lun.name} {metric}", value=value[metric], uom=puom, **opts)
-                check.add_perfdata(label=f"{lun.name} {metric}", value=value[metric], uom=puom)
+                else:
+                    check.add_perfdata(label=f"{lun.name} {metric}", value=value[metric], uom=puom)
             check.add_perfdata(label=f"{lun.name} total", value=value['max'], uom=puom)
         (code, message) = check.check_messages(separator='\n',allok=f"all {luns_count} luns are fine")
         check.exit(code=code,message=message)
