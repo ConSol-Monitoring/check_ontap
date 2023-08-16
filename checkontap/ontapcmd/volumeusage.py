@@ -97,16 +97,17 @@ def run():
             check.exit(Status.UNKNOWN, "no volumes found")
 
         for vol in Volume.get_collection():
-            vol.get(fields="svm,space,files")
-            if not hasattr(vol,'space'):
-                continue
             if (args.exclude or args.include) and item_filter(args,vol.name):
                 logger.info(f"But item filter exclude: '{args.exclude}' or include: '{args.include}' has matched {vol.name}")
                 volumes_count -= 1
                 continue
-            logger.info(f"SVM {vol.svm.name} VOLUME {vol.name}")
-            logger.debug(f"{vol}")
-            vols.append(vol)
+            else:
+                vol.get(fields="svm,space,files")
+                if not hasattr(vol,'space'):
+                    continue
+                logger.info(f"SVM {vol.svm.name} VOLUME {vol.name}")
+                logger.debug(f"{vol}")
+                vols.append(vol)
 
         for vol in vols:
             v = {
