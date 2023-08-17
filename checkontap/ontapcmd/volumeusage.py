@@ -102,12 +102,21 @@ def run():
                 volumes_count -= 1
                 continue
             else:
-                vol.get(fields="svm,space,files")
-                if not hasattr(vol,'space'):
+                vol.get(fields="svm,space,files,space.snapshot")
+                if hasattr(vol,'space'):
+                    if not hasattr(vol.space, 'used'):
+                        logger.info(f"{vol.name} has no 'used' info in space object")
+                        continue
+                else:
+                    logger.info(f"{vol.name} has no space info")
+                    logger.debug(f"{vol.name}\n{vol}")
                     continue
                 logger.info(f"SVM {vol.svm.name} VOLUME {vol.name}")
                 logger.debug(f"{vol}")
                 vols.append(vol)
+
+        if volumes_count == 0:
+            check.exit(Status.UNKNOWN, "no volumes found")
 
         for vol in vols:
             v = {
@@ -129,7 +138,7 @@ def run():
             if hasattr(vol.space, 'afs_total'):
                 v['space']['usage'] = bytes_to_uom(vol.space.used, '%', vol.space.afs_total)
                 v['space']['max'] = vol.space.afs_total
-        
+                
             if hasattr(vol.space.snapshot, 'reserve_size') and vol.space.snapshot.reserve_size > 0:
                 v['snapshot'] = {
                     'max': vol.space.snapshot.reserve_size,
@@ -187,7 +196,7 @@ def run():
                 else:
                     puom = '%' if metric == 'usage' else 'B'
                     check.add_perfdata(label=f"{v['name']} {metric}", value=v['space'][metric], uom=puom)
-                    
+
             # data_total as perdate
             check.add_perfdata(label=f"{v['name']} total",value=v['space']['max'], uom='B')
 
@@ -203,7 +212,7 @@ def run():
                 if args.inode_critical:
                     threshold['critical'] = args.inode_critical
                 opts['threshold']= Threshold(**threshold)
-                
+
                 if s != Status.OK:
                     check.add_message(s, f"Inodes usage on {v['name']} is {v['inodes']['usage']}%")
                 check.add_perfdata(label=f"{v['name']} inodes usage", value=v['inodes']['usage'], uom="%", **opts)
