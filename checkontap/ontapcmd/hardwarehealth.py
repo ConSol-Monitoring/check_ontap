@@ -16,9 +16,8 @@
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import json
 from monplugin import Check,Status
-from netapp_ontap.resources import CLI
+from netapp_ontap.resources import CLI,Node
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,severity,item_filter
@@ -26,7 +25,7 @@ from ..tools.helper import setup_connection,severity,item_filter
 __cmd__ = "hardware-health"
 
 """
-[-type {fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown}] 
+[-type {fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown}]
 curl -X GET -kv 'https://user:pass@ip/api/private/cli/system/chassis/fru?fields=monitor,name,type,state,status'
 curl -X GET -kv 'https://user:pass@ip/api/private/cli/system/health/subsystem?subsystem=environment'
 """
@@ -40,8 +39,16 @@ def run():
                                   cli.Argument.INCLUDE,
                                   cli.Argument.TYPE,
                                   cli.Argument.PERFDATA)
+    parser.add_optional_arguments({
+        'name_or_flags': ['--type'],
+        'options': {
+            'action': 'store',
+            'nargs': '+',
+        'help': 'Sensor Types fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown',
+        }
+    })
     args = parser.get_args()
-    # Setup module logging 
+    # Setup module logging
     logger = logging.getLogger(__name__)
     logger.disabled=True
     if args.verbose:
@@ -50,7 +57,7 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     setup_connection(args.host, args.api_user, args.api_pass)
-    
+
     check = Check()
     """
     [-type {fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown}] - Sensor Type
@@ -64,7 +71,40 @@ def run():
     mapWarn = ['warn-low','warn-high']
     mapCrit = ['crit-low','crit-high','bad','failed','fault']
     mapUnknown = ['unknown','not-present','ignored','uninitialized','init-failed','not-available','invalid']
+    nvramOk = ['battery_ok','battery_partially_discharged','battery_fully_charged']
+    nvramWarn = ['battery_near_end_of_life','battery_over_charged']
+    nvramCrit = ['battery_full_discharged','battery_not_present','battery_at_end_of_life']
+    nvramUnknown = ['battery_unknown']
 
+    logger.info(f"checking sensors: {sType}")
+    try:
+        nodes_count = Node.count_collection()
+        nodes = Node.get_collection(fields="nvram,controller")
+        for node in nodes:
+            logger.info(f"{node.name}")
+            logger.debug(f"{node}")
+            if 'fan' in sType:
+                logger.info(f"FAN {node.controller.failed_fan}")
+                if node.controller.failed_fan.count > 0:
+                    check.add_message(Status.WARNING, f"Failed FAN on {node.name} '{node.controller.failed_fan.message.message}'")
+            if 'voltage' in sType or 'current' in sType:
+                logger.info(f"PSU {node.controller.failed_power_supply}")
+                if node.controller.failed_power_supply.count > 0:
+                    check.add_message(Status.WARNING, f"Failed PSU on {node.name} '{node.controller.failed_power_supply.message.message}'")
+            if 'battery-life' in sType:
+                logger.info(f"NVRAM {node.nvram}")
+                m = f"NVRAM issue on {node.name} '{node.nvram.battery_state}"
+                if node.nvram.battery_state in nvramWarn:
+                    check.add_message(Status.WARNING, m)
+                elif node.nvram.battery_state in nvramCrit:
+                    check.add_message(Status.CRITICAL, m)
+                elif node.nvram.battery_state in nvramUnknown:
+                    check.add_message(Status.UNKNOWN, m)
+                else:
+                    pass
+
+    except NetAppRestError as error:
+        check.exit(Status.UNKNOWN, f"Error => {error}")
     # Sensor environment
     try:
         response = CLI().execute("system node environment sensors show",fields="fru,state,name,type,value,units,discrete-state",type=f"{','.join(str(x) for x in sType)}")
@@ -74,14 +114,16 @@ def run():
             logger.debug(f"#--> {sensor}")
             if (args.exclude or args.include) and item_filter(args,sensor['name']):
                 continue
+
             text = f"{sensor['type']} {sensor['name']} on node {sensor['node']} is {sensor['state']}"
+
             if args.perfdata:
                 if 'value' in sensor and 'units' in sensor:
-
                     perfData = {'label': f"{sensor['node']}_{sensor['name']}",
                                 'value': f"{sensor['value']}",
                                 'uom': f"{sensor['units'].replace('mA*hr','mAh')}"}
                     check.add_perfdata(**perfData)
+
             if sensor['state'] in mapCrit:
                 check.add_message(Status.CRITICAL,text)
             elif sensor['state'] in mapWarn:
@@ -92,7 +134,6 @@ def run():
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, "Error => {}".format(error))
 
-    
     (code, message) = check.check_messages(separator="\n")
     check.exit(code=code,message=message)
 
