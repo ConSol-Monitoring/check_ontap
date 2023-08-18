@@ -37,14 +37,13 @@ def run():
     parser = cli.Parser()
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
-                                  cli.Argument.TYPE,
                                   cli.Argument.PERFDATA)
     parser.add_optional_arguments({
         'name_or_flags': ['--type'],
         'options': {
             'action': 'store',
             'nargs': '+',
-        'help': 'Sensor Types fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown',
+        'help': 'List of sensor types: fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown',
         }
     })
     args = parser.get_args()
@@ -78,11 +77,16 @@ def run():
 
     logger.info(f"checking sensors: {sType}")
     try:
+        # Node info
         nodes_count = Node.count_collection()
         nodes = Node.get_collection(fields="nvram,controller")
         for node in nodes:
             logger.info(f"{node.name}")
             logger.debug(f"{node}")
+            if 'thermal' in sType:
+                logger.info(f"Thermal {node.controller.over_temperature}")
+                if node.controller.over_temperature != "normal":
+                    check.add_message(Status.WARNING, f"Failed Temperatore on {node.name} '{node.controller.over_temperature}'")
             if 'fan' in sType:
                 logger.info(f"FAN {node.controller.failed_fan}")
                 if node.controller.failed_fan.count > 0:
@@ -93,29 +97,26 @@ def run():
                     check.add_message(Status.WARNING, f"Failed PSU on {node.name} '{node.controller.failed_power_supply.message.message}'")
             if 'battery-life' in sType:
                 logger.info(f"NVRAM {node.nvram}")
-                m = f"NVRAM issue on {node.name} '{node.nvram.battery_state}"
+                msg = f"NVRAM issue on {node.name} '{node.nvram.battery_state}'"
                 if node.nvram.battery_state in nvramWarn:
-                    check.add_message(Status.WARNING, m)
+                    check.add_message(Status.WARNING, msg)
                 elif node.nvram.battery_state in nvramCrit:
-                    check.add_message(Status.CRITICAL, m)
+                    check.add_message(Status.CRITICAL, msg)
                 elif node.nvram.battery_state in nvramUnknown:
-                    check.add_message(Status.UNKNOWN, m)
+                    check.add_message(Status.UNKNOWN, msg)
                 else:
                     pass
 
-    except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, f"Error => {error}")
-    # Sensor environment
-    try:
+        # Sensor environment
         response = CLI().execute("system node environment sensors show",fields="fru,state,name,type,value,units,discrete-state",type=f"{','.join(str(x) for x in sType)}")
         if response.http_response.json()['num_records'] == 0:
             check.exit(Status.UNKNOWN,f"no sensors found")
         for sensor in response.http_response.json()['records']:
-            logger.debug(f"#--> {sensor}")
+            logger.debug(f"{sensor}")
             if (args.exclude or args.include) and item_filter(args,sensor['name']):
                 continue
 
-            text = f"{sensor['type']} {sensor['name']} on node {sensor['node']} is {sensor['state']}"
+            msg = f"{sensor['type']} {sensor['name']} on node {sensor['node']} is {sensor['state']}"
 
             if args.perfdata:
                 if 'value' in sensor and 'units' in sensor:
@@ -125,17 +126,20 @@ def run():
                     check.add_perfdata(**perfData)
 
             if sensor['state'] in mapCrit:
-                check.add_message(Status.CRITICAL,text)
+                check.add_message(Status.CRITICAL,msg)
             elif sensor['state'] in mapWarn:
-                check.add_message(Status.WARNING,text)
+                check.add_message(Status.WARNING,msg)
             elif sensor['state'] in mapUnknown:
-                check.add_message(Status.UNKNOWN,text)
+                check.add_message(Status.UNKNOWN,msg)
         check.add_message(Status.OK,f"all {response.http_response.json()['num_records']} sensors are fine")
-    except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error))
+        
+        (code, message) = check.check_messages(separator="\n")
+        check.exit(code=code,message=message)
 
-    (code, message) = check.check_messages(separator="\n")
-    check.exit(code=code,message=message)
+    except NetAppRestError as error:
+        check.exit(Status.UNKNOWN, f"Error => {error}")
+    except Exception as error:
+        logger.exception(error)
 
 if __name__ == "__main__":
     run()
