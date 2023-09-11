@@ -63,12 +63,12 @@ def run():
     [-state {normal|warn-low|warn-high|crit-low|crit-high|disabled|uninitialized|init-failed|not-available|invalid|retry|bad|not-present|failed|ignored|fault|unknown}]
     """
     if not args.type:
-        sType = ['fan','thermal','voltage','current','battery-life','discrete','fru','nvmem','counter','minutes','percent','agent']
+        sType = ['fan','thermal','voltage','current','battery-life','discrete','fru','nvmem','counter','minutes','percent','agent','dimm']
     else:
         sType = args.type
 
-    mapWarn = ['warn-low','warn-high']
-    mapCrit = ['crit-low','crit-high','bad','failed','fault']
+    mapWarn = ['warn-low','warn-high','ok-with-suppressed']
+    mapCrit = ['crit-low','crit-high','bad','failed','fault','degraded','unreachable']
     mapUnknown = ['unknown','not-present','ignored','uninitialized','init-failed','not-available','invalid']
     nvramOk = ['battery_ok','battery_partially_discharged','battery_fully_charged']
     nvramWarn = ['battery_near_end_of_life','battery_over_charged']
@@ -85,19 +85,28 @@ def run():
             logger.debug(f"{node}")
             if 'thermal' in sType:
                 logger.info(f"Thermal {node.controller.over_temperature}")
+                msg = f"Temperature on {node.name} is {node.controller.over_temperature}"
                 if node.controller.over_temperature != "normal":
-                    check.add_message(Status.WARNING, f"Failed Temperatore on {node.name} '{node.controller.over_temperature}'")
+                    check.add_message(Status.WARNING, msg)
+                else:
+                    check.add_message(Status.OK, msg)
             if 'fan' in sType:
                 logger.info(f"FAN {node.controller.failed_fan}")
+                msg = f"Fan on {node.name}: {node.controller.failed_fan.message.message}"
                 if node.controller.failed_fan.count > 0:
-                    check.add_message(Status.WARNING, f"Failed FAN on {node.name} '{node.controller.failed_fan.message.message}'")
+                    check.add_message(Status.WARNING, msg)
+                else:
+                    check.add_message(Status.OK, msg)
             if 'voltage' in sType or 'current' in sType:
                 logger.info(f"PSU {node.controller.failed_power_supply}")
+                msg = f"PSU on {node.name}: {node.controller.failed_power_supply.message.message}"
                 if node.controller.failed_power_supply.count > 0:
-                    check.add_message(Status.WARNING, f"Failed PSU on {node.name} '{node.controller.failed_power_supply.message.message}'")
+                    check.add_message(Status.WARNING, msg)
+                else:
+                    check.add_message(Status.OK, msg)
             if 'battery-life' in sType:
                 logger.info(f"NVRAM {node.nvram}")
-                msg = f"NVRAM issue on {node.name} '{node.nvram.battery_state}'"
+                msg = f"NVRAM on {node.name}: '{node.nvram.battery_state}'"
                 if node.nvram.battery_state in nvramWarn:
                     check.add_message(Status.WARNING, msg)
                 elif node.nvram.battery_state in nvramCrit:
@@ -105,7 +114,19 @@ def run():
                 elif node.nvram.battery_state in nvramUnknown:
                     check.add_message(Status.UNKNOWN, msg)
                 else:
-                    pass
+                    check.add_message(Status.OK, msg)
+            if 'fru' in sType:
+                logger.info(f"FRUs for node {node.name}")
+                for fru in node.controller.frus:
+                    msg = f"FRU {fru.id} on {node.name} is {fru.state}"
+                    if fru.state in mapWarn:
+                        check.add_message(Status.WARNING, msg)
+                    elif fru.state in mapCrit:
+                        check.add_message(Status.CRITICAL, msg)
+                    elif fru.state in mapUnknown:
+                        check.add_message(Status.UNKNOWN, msg)
+                    else: 
+                        check.add_message(Status.OK, msg)
 
         # Sensor environment
         response = CLI().execute("system node environment sensors show",fields="fru,state,name,type,value,units,discrete-state",type=f"{','.join(str(x) for x in sType)}")
