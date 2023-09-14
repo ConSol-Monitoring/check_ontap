@@ -43,7 +43,7 @@ def run():
         'options': {
             'action': 'store',
             'nargs': '+',
-        'help': 'List of sensor types: fan|thermal|voltage|current|battery-life|discrete|fru|nvmem|counter|minutes|percent|agent|unknown',
+            'help': 'List of available sensor types (separated by space):\nfan thermal voltage current battery-life discrete fru nvmem counter minutes percent agent unknown',
         }
     })
     args = parser.get_args()
@@ -63,7 +63,7 @@ def run():
     [-state {normal|warn-low|warn-high|crit-low|crit-high|disabled|uninitialized|init-failed|not-available|invalid|retry|bad|not-present|failed|ignored|fault|unknown}]
     """
     if not args.type:
-        sType = ['fan','thermal','voltage','current','battery-life','discrete','fru','nvmem','counter','minutes','percent','agent','dimm']
+        sType = ['fan','thermal','voltage','current','battery-life','discrete','fru','nvmem','counter','minutes','percent','agent']
     else:
         sType = args.type
 
@@ -125,7 +125,7 @@ def run():
                         check.add_message(Status.CRITICAL, msg)
                     elif fru.state in mapUnknown:
                         check.add_message(Status.UNKNOWN, msg)
-                    else: 
+                    else:
                         check.add_message(Status.OK, msg)
 
         # Sensor environment
@@ -152,10 +152,12 @@ def run():
                 check.add_message(Status.WARNING,msg)
             elif sensor['state'] in mapUnknown:
                 check.add_message(Status.UNKNOWN,msg)
-        check.add_message(Status.OK,f"all {response.http_response.json()['num_records']} sensors are fine")
-        
+
         (code, message) = check.check_messages(separator="\n")
-        check.exit(code=code,message=message)
+        if code != Status.OK:
+            check.exit(code=code,message=message)
+        else:
+            check.exit(code=code,message=f"all {response.http_response.json()['num_records']} checked sensors are fine\n{message}")
 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, f"Error => {error}")

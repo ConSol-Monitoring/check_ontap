@@ -64,7 +64,7 @@ class Parser:
         The standard group cannot be extended.
         """
         self._parser = argparse.ArgumentParser(description='check_ontap',
-                                               formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+                                               formatter_class=argparse.RawTextHelpFormatter,
                                                conflict_handler='resolve',
                                                )
         self._standard_args_group = self._parser.add_argument_group('standard arguments')
