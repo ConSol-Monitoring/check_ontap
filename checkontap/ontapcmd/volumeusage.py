@@ -96,13 +96,12 @@ def run():
         if volumes_count == 0:
             check.exit(Status.UNKNOWN, "no volumes found")
 
-        for vol in Volume.get_collection():
+        for vol in Volume.get_collection(fields="svm,space,files,space.snapshot"):
             if (args.exclude or args.include) and item_filter(args,vol.name):
                 logger.info(f"But item filter exclude: '{args.exclude}' or include: '{args.include}' has matched {vol.name}")
                 volumes_count -= 1
                 continue
             else:
-                vol.get(fields="svm,space,files,space.snapshot")
                 if hasattr(vol,'space'):
                     if not hasattr(vol.space, 'used'):
                         logger.info(f"{vol.name} has no 'used' info in space object")

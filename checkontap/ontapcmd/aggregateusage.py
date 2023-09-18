@@ -94,8 +94,7 @@ def run():
         if aggr_count == 0:
             check.exit(Status.UNKNOWN, "no aggregates found")
 
-        for aggr in Aggregate.get_collection():
-            aggr.get(fields="space,uuid")
+        for aggr in Aggregate.get_collection(fields="space,uuid"):
             if (args.exclude or args.include) and item_filter(args,aggr.name):
                 logger.info(f"{aggr.name} filtered out and removed from check")
                 aggr_count -= 1

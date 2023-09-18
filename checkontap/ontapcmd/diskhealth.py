@@ -101,7 +101,7 @@ def run():
         if disk_count == 0:
             logger.debug(f"found {disk_count} disks")
             check.exit(Status.UNKNOWN, "no disks found")
-        Disks = Disk.get_collection()
+        Disks = Disk.get_collection(fields="*")
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, f"ERROR => {error}")
 
@@ -132,11 +132,9 @@ def check_multipath(check,logger,args,Disks):
     """
     logger.info("starting multipath check")
     count = 0
-    out = {}
     for disk in Disks:
         if (args.exclude or args.include) and item_filter(args,disk.name):
             continue
-        disk.get()
         if not hasattr(disk,'paths'):
             logger.debug(f"{disk}")
             continue
@@ -155,8 +153,8 @@ def check_diskstate(check,logger,args,Disks):
     disk_count = Disk.count_collection()
     for disk in Disks:
         if (args.exclude or args.include) and item_filter(args,disk.name):
+            disk_count -= 1
             continue
-        disk.get()
         logger.debug(f"{disk}")
 
         #Aggregate = Disk is used as a physical disk in an aggregate.

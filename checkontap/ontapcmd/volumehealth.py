@@ -86,6 +86,7 @@ def run():
             check.exit(Status.UNKNOWN, "no vols found")
 
         if args.name:
+            volumes_count = len(args.name[0])
             for n in args.name[0]:
                 vol = Volume.find(name=n)
                 logger.info(f"find volume {n}")
@@ -97,9 +98,8 @@ def run():
                 else:
                     check.add_message(Status.OK, f"Vol: {vol.name} has state {vol.state}")
         else:
-            for vol in Volume.get_collection():
+            for vol in Volume.get_collection(fields="name,state,style,comment"):
                 logger.info(f"get volume {vol.name}")
-                vol.get(fields="name,state,style,comment")
                 logger.debug(f"{vol}")
                 if not hasattr(vol,'state'):
                     volumes_count -= 1
