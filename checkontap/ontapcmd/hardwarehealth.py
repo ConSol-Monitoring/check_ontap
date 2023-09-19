@@ -79,7 +79,7 @@ def run():
     try:
         # Node info
         nodes_count = Node.count_collection()
-        nodes = Node.get_collection(fields="nvram,controller")
+        nodes = Node.get_collection(fields="*")
         for node in nodes:
             logger.info(f"{node.name}")
             logger.debug(f"{node}")
@@ -90,21 +90,21 @@ def run():
                     check.add_message(Status.WARNING, msg)
                 else:
                     check.add_message(Status.OK, msg)
-            if 'fan' in sType:
+            if 'fan' in sType and hasattr(node.controller, 'failed_fan'):
                 logger.info(f"FAN {node.controller.failed_fan}")
                 msg = f"Fan on {node.name}: {node.controller.failed_fan.message.message}"
                 if node.controller.failed_fan.count > 0:
                     check.add_message(Status.WARNING, msg)
                 else:
                     check.add_message(Status.OK, msg)
-            if 'voltage' in sType or 'current' in sType:
+            if ('voltage' in sType or 'current' in sType) and hasattr(node.controller, 'failed_power_supply'):
                 logger.info(f"PSU {node.controller.failed_power_supply}")
                 msg = f"PSU on {node.name}: {node.controller.failed_power_supply.message.message}"
                 if node.controller.failed_power_supply.count > 0:
                     check.add_message(Status.WARNING, msg)
                 else:
                     check.add_message(Status.OK, msg)
-            if 'battery-life' in sType:
+            if 'battery-life' in sType and hasattr(node, 'nvram'):
                 logger.info(f"NVRAM {node.nvram}")
                 msg = f"NVRAM on {node.name}: '{node.nvram.battery_state}'"
                 if node.nvram.battery_state in nvramWarn:
@@ -115,7 +115,7 @@ def run():
                     check.add_message(Status.UNKNOWN, msg)
                 else:
                     check.add_message(Status.OK, msg)
-            if 'fru' in sType:
+            if 'fru' in sType and hasattr(node.controller, 'frus'):
                 logger.info(f"FRUs for node {node.name}")
                 for fru in node.controller.frus:
                     msg = f"FRU {fru.id} on {node.name} is {fru.state}"
