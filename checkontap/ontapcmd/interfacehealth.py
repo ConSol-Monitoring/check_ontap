@@ -21,32 +21,12 @@ from netapp_ontap.resources import IpInterface
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity
+import re
 
 __cmd__ = "interface-health"
 description = f"check interface status and home location"
 
 """
-IpInterface(
-    {'ip': {'address': '1.2.3.4', 'netmask': '24', 'family': 'ipv4'}, 
-    'state': 'up', 
-    ...
-    'location': {
-        'node': {
-            'name': 'node-1', }
-        'port': {
-            'node': {'name': 'node-1'}, 
-            'name': 'a0t', }
-        'auto_revert': False, 
-        'failover': 'default', 
-        'home_port': {
-            'node': {'name': 'node-1'}, 
-            'name': 'a0t', }
-        'home_node': {
-            'name': 'node-1', 
-            'is_home': True}, 
-    'enabled': True, 
-    'name': 'acme_data', 
-    'scope': 'svm', 
 """
 
 def run():
@@ -54,8 +34,15 @@ def run():
     parser.set_description(description)
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE)
+    parser.add_optional_arguments( {
+        'name_or_flags': ['--exclude-svm'],
+        'options': {
+            'action': 'store',
+            'help': 'regexp to exclude interfaces from svm',
+        }
+    })
     args = parser.get_args()
-
+    
     # Setup module logging
     logger = logging.getLogger(__name__)
     logger.disabled = True
@@ -75,16 +62,21 @@ def run():
         if interface_count == 0:
             check.exit(Status.UNKNOWN, "no interfaces found")
 
-        for IpInt in IpInterface.get_collection():
-            IpInt.get()
+        for IpInt in IpInterface.get_collection(fields="*"):
             if (args.exclude or args.include) and item_filter(args,IpInt.name):
-                logger.debug(f"exclude interface {IpInt.name}")
+                logger.info(f"exclude interface {IpInt.name} due to include / exclude")
                 continue
+            if args.exclude_svm and hasattr(IpInt, 'svm'):
+                if re.search(args.exclude_svm, IpInt.svm.name):
+                    logger.info(f"exclude interface {IpInt.name} due to SVM exclude. SVM {IpInt.svm.name}")
+                    continue
             logger.debug(f"INTERFACE {IpInt.name}\n{IpInt}")
             IpInts.append(IpInt)
 
     except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error))
+        check.exit(Status.UNKNOWN, f"Error => {error}")
+    except Exception as error:
+        check.exit(Status.UNKNOWN, f"{error}")
 
     count = 0
 
