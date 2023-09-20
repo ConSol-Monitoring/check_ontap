@@ -139,7 +139,7 @@ def check_multipath(check,logger,args,Disks):
             logger.debug(f"{disk}")
             continue
         if len(disk.paths) % 2 != 0:
-            check.add_message(Status.WARNING, f"Disk {disk.name:7} on bay {disk.bay:2} of node {disk.node.name} has {len(disk.paths)} paths")
+            check.add_message(Status.WARNING, f"Disk {disk.name:7} on bay {disk.bay:3} of node {disk.node.name} has {len(disk.paths)} paths")
         count += 1
     check.add_perfdata(label=f"total",value=int(count))
     if count == 1:
@@ -170,8 +170,22 @@ def check_diskstate(check,logger,args,Disks):
         #Unknown = Container is currently unknown. This is the default setting.
         #Unsupported = Disk is not supported.
 
+        if not hasattr(disk, 'bay'):
+            disk.bay = " - "
+
         if not hasattr(disk, 'state'):
-            setattr(disk, 'state', disk.container_type)
+            m = f"Disk {disk.name:7} on bay {disk.bay:3} is {disk.type:6} {disk.container_type}"
+            if hasattr(disk, 'outage'):
+                if disk.outage.persistently_failed:
+                    m = f"Disk {disk.name} on bay {disk.bay:3} is persistently failed {disk.outage.reason.message}"
+                    check.add_message(Status.CRITICAL, m)
+                else:
+                    check.add_message(Status.OK, m)
+
+            else:
+                check.add_message(Status.OK, m)
+            continue
+
 
         stateWarn = re.match('reconstructing', disk.state)
         stateCrit = re.match('(broken|offline)', disk.state)
@@ -183,16 +197,16 @@ def check_diskstate(check,logger,args,Disks):
         out[disk.name] = {}
         out[disk.name]['name'] = disk.name
         out[disk.name]['state'] = disk.state
-        out[disk.name]['bay'] = disk.bay
+        out[disk.name]['bay'] = disk.bay if hasattr(disk, 'bay') else " - "
         out[disk.name]['node'] = disk.home_node.name if hasattr(disk, 'home_node') else "unknown"
-        
+
         if disk.container_type in ["unassigned","unsupported","unknown"]:
-            m = f"Disk {disk.name:7} on bay {disk.bay:2} is {disk.container_type}"
+            m = f"Disk {disk.name:7} on bay {disk.bay:3} is {disk.container_type}"
             check.add_message(Status.WARNING,m)
         elif disk.container_type != "remote":
-            if disk.node.uuid != disk.home_node.uuid:
+            if disk.node.name != disk.home_node.name:
                 check.add_message(Status.WARNING, f"Disk {disk.name} is on node {disk.node.name} instead of {disk.home_node.name}")
-            m = f"Disk {disk.name:7} on bay {disk.bay:2} of node {disk.home_node.name} is {disk.state}"
+            m = f"Disk {disk.name:7} on bay {disk.bay:3} of node {disk.home_node.name} is {disk.state}"
             if stateWarn:
                 check.add_message(Status.WARNING,m)
             elif stateCrit:
