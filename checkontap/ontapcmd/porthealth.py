@@ -68,8 +68,10 @@ def run():
             check.exit(Status.UNKNOWN,"no ports found on device")
             
         disabled = 0
-        for p in Port.get_collection():
-            p.get()
+        
+        Ports = Port.get_collection(fields="*")
+        
+        for p in Ports:
             if not hasattr(p, "enabled") or not p.enabled:
                 logger.info(f"Port isn't enabled {p.name}")
                 disabled += 1
