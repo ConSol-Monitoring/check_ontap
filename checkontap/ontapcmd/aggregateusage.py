@@ -17,7 +17,7 @@
 
 from monplugin import Check,Threshold,Status
 import logging
-from netapp_ontap.resources import Aggregate,Plex
+from netapp_ontap.resources import Aggregate,Plex,CLI
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uom_to_bytes
@@ -25,48 +25,12 @@ from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,uo
 __cmd__ = "aggregate-usage"
 description = f"Mode {__cmd__} with -m / --metric % or size description like used_GB "
 """
-Aggregate({
-    '_links': {'self': {'href': '/api/storage/aggregates/01d71c4b-88d8-43c3-ae33-afa2b64a629d'}},
-    'uuid': '01d71c4b-88d8-43c3-ae33-afa2b64a629d',
-    'space': {
-        'footprint': 139780465348608,
-        'efficiency': {'ratio': 186.6856716029982, 'logical_used': 24291687892377600, 'savings': 24161567097976004},
-        'cloud_storage': {'used': 0},
-        'efficiency_without_snapshots': {'ratio': 2.08165380808469, 'logical_used': 252303379914752, 'savings': 131100046807748},
-        'block_storage': {
-            'available': 62257396912128,
-            'full_threshold_percent': 98,
-            'used': 134769329168384,
-            'size': 197026726080512,
-            'inactive_user_data': 0}
-        },
-    'name': 'storage.central.acme'})
-Plex({
-    'aggregate': {
-        'uuid': '97e37d61-23b0-4917-85c8-ae9d5354bba5',
-        '_links': {'self': {'href': '/api/storage/aggregates/97e37d61-23b0-4917-85c8-ae9d5354bba5'}},
-        'name': 'aggr1_01'
-        },
-    'resync': {'active': False},
-    'online': True,
-    'pool': 'pool0',
-    'state': 'normal',
-    'raid_groups': [{
-        'cache_tier': False,
-        'recomputing_parity': {'active': False},
-        'reconstruct': {'active': False},
-        'degraded': False,
-        'disks': [{
-            'disk': {'name': '1.0.11'},
-            'usable_size': 3838499094528,
-            'state': 'normal',
-            'type': 'fsas',
-            'position': 'dparity'
-            }, {
-            'disk' .....
-            }],
-        'name': 'rg0'}],
-    'name': 'plex0'})
+https://kb.netapp.com/onprem/ontap/dm/REST_API/Why_do_root_aggregates_not_show_up_in_REST_API_calls
+
+Answer
+    The REST API is designed to only expose non-root aggregates for all methods (GET, POST, PATCH, and DELETE) and non-remote aggregates in Metroclusters.
+    This design consideration was implemented to enforce best practices for managing root aggregates: The configuration or content of the root aggregates and volumes should not be modified.
+
 """
 
 def run():
@@ -88,13 +52,23 @@ def run():
     check = Check(threshold = Threshold(args.warning or None, args.critical or None))
     setup_connection(args.host, args.api_user, args.api_pass)
 
+    AGGREGATES = []
+        
     try:
-        aggr_count = Aggregate.count_collection()
+        response = CLI().execute("storage aggregate show", fields='uuid')
+        
+        for a in response.http_response.json()["records"]:
+            AGG = Aggregate(uuid=a['uuid'])
+            AGG.get(fields="*")
+            AGGREGATES.append(AGG) 
+            
+        aggr_count = len(AGGREGATES)
         logger.info(f"found {aggr_count} Aggregates")
+        
         if aggr_count == 0:
             check.exit(Status.UNKNOWN, "no aggregates found")
 
-        for aggr in Aggregate.get_collection(fields="space,uuid"):
+        for aggr in AGGREGATES:
             if (args.exclude or args.include) and item_filter(args,aggr.name):
                 logger.info(f"{aggr.name} filtered out and removed from check")
                 aggr_count -= 1
