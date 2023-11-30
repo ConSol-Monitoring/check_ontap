@@ -17,7 +17,7 @@
 
 import logging
 from monplugin import Check,Status
-from netapp_ontap.resources import IpInterface
+from netapp_ontap.resources import IpInterface,Svm
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
 from ..tools.helper import setup_connection,item_filter,severity
@@ -55,6 +55,20 @@ def run():
 
     setup_connection(args.host, args.api_user, args.api_pass)
 
+    SvmInt = []
+    # check for running svm's
+    try:
+        svm = Svm.get_collection(fields="name,state,ip_interfaces")
+        for s in svm:
+            if hasattr(s, 'ip_interfaces') and 'stopped' in s.state:
+                for int in s.ip_interfaces:
+                    logger.info(f"found int {int.name} on stopped svm {s.name}")
+                    SvmInt.append(int.name)
+    except NetAppRestError as error:
+        check.exit(Status.UNKNOWN, f"Error => {error}")
+    except Exception as error:
+        check.exit(Status.UNKNOWN, f"{error}")
+    
     IpInts = []
     try:
         interface_count = IpInterface.count_collection()
@@ -85,7 +99,9 @@ def run():
             logger.info(f"Interface {Int.name} is not enabled, ignore")
             continue
         count += 1
-        if 'down' in Int.state:
+        if 'down' in Int.state and Int.name in SvmInt:
+            logger.info(f"Interface {Int.name} for stopped svm {Int.svm.name}")
+        elif 'down' in Int.state:
             check.add_message(Status.CRITICAL, f"int {Int.name} is {Int.state}")
         if not Int.location.is_home:
             check.add_message(Status.CRITICAL, f"Int {Int.name} is on {Int.location.node.name} but should be on {Int.location.home_node.name}")
@@ -93,7 +109,10 @@ def run():
     check.add_message(Status.OK, f"{count} of {len(IpInts)} Interfaces are up")
     
     for Int in IpInts:
-        check.add_message(Status.OK, f"Int {Int.name:40}{Int.state:5}{Int.ip.address:16}/{Int.ip.netmask:3} is homed {Int.location.is_home}")
+        if hasattr(Int, 'svm'):
+            check.add_message(Status.OK, f"Int {Int.name:40}{Int.state:5}{Int.ip.address:16}/{Int.ip.netmask:3} is homed {Int.location.is_home} and belongs to SVM {Int.svm.name}")
+        else:
+            check.add_message(Status.OK, f"Int {Int.name:40}{Int.state:5}{Int.ip.address:16}/{Int.ip.netmask:3} is homed {Int.location.is_home}")
         
     (code, message) = check.check_messages(separator='\n  ')
     check.exit(code=code,message=message)

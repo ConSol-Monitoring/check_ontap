@@ -187,8 +187,8 @@ def check_diskstate(check,logger,args,Disks):
             continue
 
 
-        stateWarn = re.match('reconstructing', disk.state)
-        stateCrit = re.match('(broken|offline)', disk.state)
+        stateWarn = re.match('reconstructing', disk.state.lower())
+        stateCrit = re.match('(broken|offline)', disk.state.lower())
 
         if disk.container_type not in cType:
             cType[disk.container_type] = 0
@@ -199,7 +199,6 @@ def check_diskstate(check,logger,args,Disks):
         out[disk.name]['state'] = disk.state
         out[disk.name]['bay'] = disk.bay if hasattr(disk, 'bay') else " - "
         out[disk.name]['node'] = disk.home_node.name if hasattr(disk, 'home_node') else "unknown"
-
         if disk.container_type in ["unassigned","unsupported","unknown"]:
             m = f"Disk {disk.name:7} on bay {disk.bay:3} is {disk.container_type}"
             check.add_message(Status.WARNING,m)
