@@ -20,7 +20,7 @@ from monplugin import Check,Status,Threshold, Range
 from netapp_ontap.resources import Volume
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,range_in_bytes
+from ..tools.helper import setup_connection,item_filter,severity,bytes_to_uom,range_in_bytes,uom_to_bytes
 
 __cmd__ = "volume-usage"
 description = f"Mode {__cmd__} with -m / --metric usage or size description like used_GB. Inodes thresholds are alway given in %"
@@ -75,6 +75,7 @@ def run():
                                   cli.Argument.NAME,
                                   cli.Argument.METRIC,
                                   cli.Argument.INODE_WARN, cli.Argument.INODE_CRIT,
+                                  cli.Argument.SNAP_WARN, cli.Argument.SNAP_CRIT,
                                   )
     args = parser.get_args()
 
@@ -144,18 +145,29 @@ def run():
                     'used': vol.space.snapshot.used,
                     'usage': bytes_to_uom(vol.space.snapshot.used, '%' ,vol.space.snapshot.reserve_size)
                 }
-            elif vol.space.snapshot.used > 0:
+                logger.info(f"{v['name']} hast {vol.space.snapshot.reserve_size}B snapshot reserved")
+            elif hasattr(vol.space.snapshot, 'reserve_percent') and vol.space.snapshot.reserve_percent > 0:
+                reserved_size = uom_to_bytes(vol.space.snapshot.reserve_percent, '%', v['space']['max'])
                 v['snapshot'] = {
-                    'max': 0,
+                    'max': reserved_size,
+                    'used': vol.space.snapshot.used,
+                    'usage': bytes_to_uom(vol.space.snapshot.used, '%', reserved_size)
+                }
+                logger.info(f"{v['name']} hast {vol.space.snapshot.reserve_percent}% snapshot reserved")
+            elif hasattr(vol.space.snapshot, 'reserve_percent') and vol.space.snapshot.reserve_percent == 0:
+                v['snapshot'] = {
+                    'max': vol.space.size,
                     'used': vol.space.snapshot.used,
                     'usage': bytes_to_uom(vol.space.snapshot.used, '%', vol.space.size)
                 }
+                logger.info(f"{v['name']} hast 0% snapshot reserved")
             else:
                 v['snapshot'] = {
                     'max': 0,
                     'used': vol.space.snapshot.used,
                     'usage': 0
                 }
+                logger.info(f"{v['name']} could'nt find snapshot settings")
 
             # Space
             usage = Threshold(args.warning or None, args.critical or None)
@@ -219,7 +231,22 @@ def run():
                 check.add_perfdata(label=f"{v['name']} inodes usage", value=v['inodes']['usage'], uom="%")
 
             # Snapshot usage just as perfdata
-            check.add_perfdata(label=f"{v['name']} snapshot usage" ,value=v['snapshot']['usage'], uom='%')
+            if args.snapshot_warning or args.snapshot_critical:
+                snapshot = Threshold(args.snapshot_warning or None, args.snapshot_critical or None)
+                opts = {}
+                opts['threshold'] = {}
+                threshold = {}
+                s = snapshot.get_status(v['snapshot']['usage'])
+                if args.snapshot_warning:
+                    threshold['warning'] = args.snapshot_warning
+                if args.snapshot_critical:
+                    threshold['critical'] = args.snapshot_critical
+                opts['threshold'] = Threshold(**threshold)
+                if s != Status.OK:
+                    check.add_message(s,f"Snapshot usage on {v['name']} id {v['snapshot']['usage']}%")
+                check.add_perfdata(label=f"{v['name']} snapshot usage" ,value=v['snapshot']['usage'], uom='%', **opts)
+            else:
+                check.add_perfdata(label=f"{v['name']} snapshot usage" ,value=v['snapshot']['usage'], uom='%')
 
         (code, message) = check.check_messages(separator='\n  ',allok=f"all {volumes_count} volumes are ok")
         check.exit(code=code,message=f"{message}")
