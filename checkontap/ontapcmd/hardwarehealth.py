@@ -46,6 +46,14 @@ def run():
             'help': 'List of available sensor types (separated by space):\nfan thermal voltage current battery-life discrete fru nvmem counter minutes percent agent unknown',
         }
     })
+    parser.add_optional_arguments({
+        'name_or_flags': ['-s', '--sensor-details'],
+        'options': {
+            'action': 'store_true',
+            'help': 'Rather than using global status information from the node, check each sensor individually'
+        }
+    })
+    
     args = parser.get_args()
     # Setup module logging
     logger = logging.getLogger(__name__)
@@ -66,6 +74,9 @@ def run():
         sType = ['fan','thermal','voltage','current','battery-life','discrete','fru','nvmem','counter','minutes','percent','agent']
     else:
         sType = args.type
+        
+    if args.perfdata:
+        args.sensor_details = True
 
     mapWarn = ['warn-low','warn-high','ok-with-suppressed']
     mapCrit = ['crit-low','crit-high','bad','failed','fault','degraded','unreachable']
@@ -78,7 +89,6 @@ def run():
     logger.info(f"checking sensors: {sType}")
     try:
         # Node info
-        nodes_count = Node.count_collection()
         nodes = Node.get_collection(fields="*")
         for node in nodes:
             logger.info(f"{node.name}")
@@ -129,35 +139,40 @@ def run():
                         check.add_message(Status.OK, msg)
 
         # Sensor environment
-        response = CLI().execute("system node environment sensors show",fields="fru,state,name,type,value,units,discrete-state",type=f"{','.join(str(x) for x in sType)}")
-        if response.http_response.json()['num_records'] == 0:
-            check.exit(Status.UNKNOWN,f"no sensors found")
-        for sensor in response.http_response.json()['records']:
-            logger.debug(f"{sensor}")
-            if (args.exclude or args.include) and item_filter(args,sensor['name']):
-                continue
-
-            msg = f"{sensor['type']} {sensor['name']} on node {sensor['node']} is {sensor['state']}"
-
-            if args.perfdata:
-                if 'value' in sensor and 'units' in sensor:
-                    perfData = {'label': f"{sensor['node']}_{sensor['name']}",
-                                'value': f"{sensor['value']}",
-                                'uom': f"{sensor['units'].replace('mA*hr','mAh')}"}
-                    check.add_perfdata(**perfData)
-
-            if sensor['state'] in mapCrit:
-                check.add_message(Status.CRITICAL,msg)
-            elif sensor['state'] in mapWarn:
-                check.add_message(Status.WARNING,msg)
-            elif sensor['state'] in mapUnknown:
-                check.add_message(Status.UNKNOWN,msg)
-
+        if args.sensor_details:
+            response = CLI().execute("system node environment sensors show",fields="fru,state,name,type,value,units,discrete-state",type=f"{','.join(str(x) for x in sType)}")
+            sensorCount = response.http_response.json()['num_records']
+            if sensorCount == 0:
+                check.exit(Status.UNKNOWN,f"no sensors found")
+            for sensor in response.http_response.json()['records']:
+                logger.debug(f"{sensor}")
+                if (args.exclude or args.include) and item_filter(args,sensor['name']):
+                    continue
+    
+                msg = f"{sensor['type']} {sensor['name']} on node {sensor['node']} is {sensor['state']}"
+    
+                if args.perfdata:
+                    if 'value' in sensor and 'units' in sensor:
+                        perfData = {'label': f"{sensor['node']}_{sensor['name']}",
+                                    'value': f"{sensor['value']}",
+                                    'uom': f"{sensor['units'].replace('mA*hr','mAh')}"}
+                        check.add_perfdata(**perfData)
+    
+                if sensor['state'] in mapCrit:
+                    check.add_message(Status.CRITICAL,msg)
+                elif sensor['state'] in mapWarn:
+                    check.add_message(Status.WARNING,msg)
+                elif sensor['state'] in mapUnknown:
+                    check.add_message(Status.UNKNOWN,msg)
+    
         (code, message) = check.check_messages(separator="\n")
         if code != Status.OK:
             check.exit(code=code,message=message)
         else:
-            check.exit(code=code,message=f"all {response.http_response.json()['num_records']} checked sensors are fine\n{message}")
+            if args.sensor_details:
+                check.exit(code=code,message=f"all {sensorCount} checked sensors are fine\n{message}")
+            else:
+                check.exit(code=code,message=f"all checked sensors are fine\n{message}")
 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, f"Error => {error}")
