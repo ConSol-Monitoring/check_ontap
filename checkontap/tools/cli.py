@@ -270,3 +270,11 @@ class Argument:
             'help': 'Snapshot used space critical threshold in percent'
         }
     }
+    COUNT = {
+        'name_or_flags': ['-C','--count'] ,
+        'options': {
+            'action': 'store',
+            'help': 'count of whatever',
+            'type': int
+        }
+    }

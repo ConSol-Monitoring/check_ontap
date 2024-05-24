@@ -127,3 +127,28 @@ def compareVersion(required,current) -> None:
        elif v1 > v2:
            return 0
     return -1
+
+# Convert time into secons
+# 1d / 1 W / 1.5h
+def to_seconds(value) -> None:
+    if not value:
+        return None
+    t = re.search('([0-9.]+)\s*([smhdw]*)', value.lower())
+    time = float(t.group(1))
+    if not t.group(2) or "s" in t.group(2):
+        # assuming seconds
+        return time
+    elif "m" in t.group(2):
+        # assuming minutes
+        return time * 60
+    elif "h" in t.group(2):
+        # assuming hours
+        return time * 3600
+    elif "d" in t.group(2):
+        # assuming hours
+        return time * 3600 * 24
+    elif "w" in t.group(2):
+        # assuming hours
+        return time * 3600 * 24 * 7
+    else:
+        return None

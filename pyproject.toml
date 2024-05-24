@@ -6,17 +6,17 @@ requires = ["flit_core >=3.2,<4"]
 name = "checkontap"
 readme = "README.md"
 description = "check_ontap monitoring plugin"
-version = "0.2.2"
-requires-python = ">= 3.6"
+version = "0.3.0rc1"
+requires-python = ">= 3.8"
 authors = [
     { name = "Matthias Gallinger", email = "matthias.gallinger@consol.de" }
 ]
 dependencies = [
-    "netapp-ontap >= 9.11.1.0",
-    "monplugin >= 0.6",
+    "netapp-ontap >= 9.14.1.0",
+    "monplugin >= 0.6.2",
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Topic :: System :: Monitoring",
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
