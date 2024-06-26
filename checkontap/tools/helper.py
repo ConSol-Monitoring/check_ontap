@@ -18,10 +18,10 @@ from monplugin import Range
 import re
 
 # Connect to Host
-def setup_connection(cluster: str, api_user: str, api_pass: str) -> None:
+def setup_connection(cluster: str, api_user: str, api_pass: str, port: int) -> None:
     """Configure the default connection for the application"""
     config.CONNECTION = HostConnection(
-        cluster, username=api_user, password=api_pass, verify=False,
+        cluster, username=api_user, password=api_pass, verify=False, port=port,
     )
     
 # Include & Exclude filter
