@@ -91,8 +91,9 @@ def run():
 
     check = Check()
 
-    setup_connection(args.host, args.api_user, args.api_pass)
-
+    setup_connection(args.host, args.api_user, args.api_pass, args.port)
+    
+    # Query API    
     try:
         software = Software()
         software.get(fields='version')
@@ -150,7 +151,14 @@ def check_multipath(check,logger,args,Disks):
 def check_diskstate(check,logger,args,Disks):
     out = {}
     cType = {}
-    disk_count = Disk.count_collection()
+
+    try:
+        disk_count = Disk.count_collection()
+        #Disks = Disk.get_collection(fields="name,bay,type,container_type,state,outage,node,home_node")
+        Disks = Disk.get_collection(fields="*")
+    except NetAppRestError as error:
+        check.exit(Status.UNKNOWN, f"ERROR => {error}")
+
     for disk in Disks:
         if (args.exclude or args.include) and item_filter(args,disk.name):
             disk_count -= 1
@@ -185,9 +193,21 @@ def check_diskstate(check,logger,args,Disks):
             else:
                 check.add_message(Status.OK, m)
             continue
+        """ Disk states
+        broken
+        copy
+        maintenance
+        partner
+        pending
+        present
+        reconstructing
+        removed
+        spare
+        unfail
+        zeroing
+        """
 
-
-        stateWarn = re.match('reconstructing', disk.state.lower())
+        stateWarn = re.match('reconstructing|zeroing', disk.state.lower())
         stateCrit = re.match('(broken|offline)', disk.state.lower())
 
         if disk.container_type not in cType:

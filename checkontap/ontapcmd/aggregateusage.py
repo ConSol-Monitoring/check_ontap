@@ -50,7 +50,7 @@ def run():
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
     check = Check(threshold = Threshold(args.warning or None, args.critical or None))
-    setup_connection(args.host, args.api_user, args.api_pass)
+    setup_connection(args.host, args.api_user, args.api_pass, args.port)
 
     AGGREGATES = []
         

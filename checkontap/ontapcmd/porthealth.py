@@ -59,7 +59,7 @@ def run():
 
     check = Check()
 
-    setup_connection(args.host, args.api_user, args.api_pass)
+    setup_connection(args.host, args.api_user, args.api_pass, args.port)
 
     try:
         port_count = Port.count_collection()

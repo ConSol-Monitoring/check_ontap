@@ -53,7 +53,7 @@ def run():
 
     check = Check()
 
-    setup_connection(args.host, args.api_user, args.api_pass)
+    setup_connection(args.host, args.api_user, args.api_pass, args.port)
 
     SvmInt = []
     # check for running svm's

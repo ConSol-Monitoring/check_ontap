@@ -41,7 +41,7 @@ def run():
             log_obj.disabled = False
             logging.getLogger(log_name).setLevel(severity(args.verbose))
 
-    setup_connection(args.host, args.api_user, args.api_pass)
+    setup_connection(args.host, args.api_user, args.api_pass, args.port)
     
     check = Check()
     # About overview module
