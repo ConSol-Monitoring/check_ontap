@@ -115,7 +115,7 @@ def main():
         sys.exit(3)
     except Exception as e:
         print(f"UNKNOWN - Unhandled exception: {e}")
-        #traceback.print_exc()
+        traceback.print_exc()
         sys.exit(3)
 
 if __name__ == "__main__":
