@@ -18,10 +18,10 @@
 
 import logging
 from monplugin import Check,Status,Threshold
-from netapp_ontap.resources import Snapshot,Volume
+from netapp_ontap.resources import Snapshot,Volume,Software
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,severity,to_seconds,item_filter
+from ..tools.helper import setup_connection,severity,to_seconds,item_filter,compareVersion
 from datetime import datetime,timedelta
 
 __cmd__ = "snapshot-health"
@@ -71,11 +71,20 @@ def run():
     # snapshots module
     try:
         logger.debug(f"Start")
+        software = Software()
+        software.get(fields='version')
+        minimumVersion = "9.10.1"
+        if not compareVersion(minimumVersion,software["version"]):
+            check.exit(Status.UNKNOWN, f"at least ONTAP v{minimumVersion} is required. Currently v{software['version']} is installed")
         Volumes = list(Volume.fast_get_collection(fields="snapshot_count"))
         # capture infos
         Snaps = []
         for v in Volumes:
             if (args.exclude or args.include) and args.mode == "volume" and item_filter(args,v.name):
+                logger.info(f"But item filter exclude: '{args.exclude}' or include: '{args.include}' has matched {v.name}")
+                continue
+            if not hasattr(v, 'snapshot_count'):
+                logger.debug(f"{v.name} has no snapshots")
                 continue
             vol = {}
             vol['vname'] = v.name
