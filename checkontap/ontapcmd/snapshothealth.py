@@ -99,7 +99,7 @@ def run():
                 continue
             else:
                 Snapshots = list(Snapshot.fast_get_collection(f"{v.uuid}",fields="name,create_time"))
-                logger.debug(f"{v.name} has {v.snapshot_count} snapshots")
+                logger.info(f"{v.name} has {v.snapshot_count} snapshots")
                 Ages = []
                 for s in Snapshots:
                     if (args.exclude or args.include) and args.mode == "snapshot" and item_filter(args,s.name):
@@ -112,7 +112,7 @@ def run():
                 vol_with_snap += 1
 
             Ages = sorted(Ages, key=lambda tup: tup[1])
-            logger.debug(f"Oldest => from {Ages[0][1]} name {Ages[0][0]} ")
+            logger.info(f"oldest snapshot => from {Ages[0][1]} name {Ages[0][0]} ")
             vol['sname'] = Ages[0][0]
             vol['rawdate'] = Ages[0][1]
             vol['date'] = timedelta(seconds = datetime.now().timestamp() - Ages[0][1])

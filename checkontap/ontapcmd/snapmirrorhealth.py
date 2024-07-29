@@ -26,6 +26,16 @@ from ..tools.helper import setup_connection,severity
 
 __cmd__ = "snapmirror-health"
 """
+Valid state choices:
+
+broken_off
+paused
+snapmirrored
+uninitialized
+in_sync
+out_of_sync
+synchronizing
+expanding
 """
 def TimeParser(netapptimeperiod):
     t = 0
@@ -60,13 +70,28 @@ def run():
         relCount = 0
         relProblemCount = 0
         lagThreshold = Threshold(args.warning or None, args.critical or None)
+        unInit =  []
         for rel in relship:
             relCount += 1
-            lagTime = TimeParser(rel.lag_time)
+            if not hasattr(rel, 'state') or not hasattr(rel, 'healthy'):
+                logger.info(f"couldn't found state or health flag")
+            if hasattr(rel, 'lag_time'):
+                lagTime = TimeParser(rel.lag_time)
+            else: 
+                lagTime = 0
             HRTime = str(datetime.timedelta(seconds=lagTime))
-            
-            msg = f"Relationship {rel.state} for {rel.source.path}"
-            logger.info(f"Health: {rel.healthy} state: {rel.state} lag: {HRTime} {rel.source.path}")
+           
+            if hasattr(rel, 'state') :
+                state = rel.state
+            else:
+                state = "unknown"
+            if hasattr(rel, 'healthy'):
+                healthy = rel.healthy
+            else:
+                healthy = False
+                
+            msg = f"Relationship {state} for {rel.source.path}"
+            logger.info(f"Health: {healthy} state: {state} lag: {HRTime} {rel.source.path}")
            
             # check lag_time  
             lagCheck = lagThreshold.get_status(lagTime) 
@@ -75,15 +100,19 @@ def run():
                 relProblemCount +=1
            
             # check health status 
-            if rel.healthy:
+            if healthy:
                 continue
-            elif not rel.healthy and rel.unhealthy_reason:
+            elif not healthy and hasattr(rel, 'unhealthy_reason'):
                 relProblemCount += 1
                 for msg in rel.unhealthy_reason:
                     check.add_message(Status.CRITICAL,f"{msg['message']}")
-            elif not rel.healthy:
+            elif not healthy and 'unknown' in state:
+                continue
+            elif not healthy:
                 relProblemCount += 1
                 check.add_message(Status.CRITICAL,msg)
+            elif 'uninitialized' in state:
+                unInit.apped(msg)
                 
     except NetAppRestError as error:
         check.exit(Status.UNKNOWN, f"ERROR => {error}")
@@ -91,6 +120,9 @@ def run():
     (code,message) = check.check_messages(separator='\n  ')
     if code != Status.OK:
         check.exit(code=code,message=f"{relProblemCount} Problems found\n  {message}")
+    elif len(unInit) >= 1:
+        msg = "\n".join(unInit)
+        check.exit(code=code,message=f"No problems found ( {relCount} checked ) but {len(unInit)} are uninitialized \n{msg}")
     else:
         check.exit(code=code,message=f"No problems found ( {relCount} checked )")
 

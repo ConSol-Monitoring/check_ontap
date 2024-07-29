@@ -133,7 +133,7 @@ def compareVersion(required,current) -> None:
 def to_seconds(value) -> None:
     if not value:
         return None
-    t = re.search('([0-9.]+)\s*([smhdw]*)', value.lower())
+    t = re.search('([0-9.]+)\s*([smhdwMy]*)', value.lower())
     time = float(t.group(1))
     if not t.group(2) or "s" in t.group(2):
         # assuming seconds
@@ -150,5 +150,11 @@ def to_seconds(value) -> None:
     elif "w" in t.group(2):
         # assuming hours
         return time * 3600 * 24 * 7
+    elif "M" in t.group(2):
+        # assuming Month
+        return time * 3600 * 24 * 30
+    elif "y" in t.group(2):
+        # assuming year
+        return time * 3600 * 24 * 365
     else:
         return None
