@@ -40,6 +40,7 @@ def run():
     parser.add_optional_arguments(cli.Argument.EXCLUDE,
                                   cli.Argument.INCLUDE,
                                   cli.Argument.METRIC)
+    
     args = parser.get_args()
     # Setup module logging
     logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ def run():
         if aggr_count == 0:
             check.exit(Status.UNKNOWN, "no aggregates found")
 
+        OKOut = []
         for aggr in AGGREGATES:
             if (args.exclude or args.include) and item_filter(args,aggr.name):
                 logger.info(f"{aggr.name} filtered out and removed from check")
@@ -91,7 +93,7 @@ def run():
                 'free': aggr.space.block_storage.size - aggr.space.block_storage.used,
                 'max': aggr.space.block_storage.size
                 }
-
+            OKOut.append(f"{aggr.name} ({value['usage']}% - {bytes_to_uom(value['max'],'TB')}TB)")
             for metric in ['usage','used','free']:
                 opts = {}
                 puom = '%' if metric == 'usage' else 'B'
@@ -127,7 +129,7 @@ def run():
 
             check.add_perfdata(label=f"{aggr.name} total", value=value['max'], uom='B')
             
-        (code, message) = check.check_messages(separator='\n',allok=f"all {aggr_count} aggregates are fine")
+        (code, message) = check.check_messages(separator='\n',allok=f"all {aggr_count} aggregates are fine. { '  '.join(OKOut) }")
         check.exit(code=code,message=message)
 
     except NetAppRestError as error:

@@ -26,8 +26,8 @@ clean:
 
 .PHONY: upload-test
 upload-test: dist
-	python3 -m twine upload --repository testpypi dist/*
+	python3 -m twine upload --repository testpypi --config-file .pypirc dist/*
 
 .PHONY: upload-prod
 upload-prod: dist
-	python3 -m twine upload dist/*
+	python3 -m twine upload dist/* --config-file .pypirc
