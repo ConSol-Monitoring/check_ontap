@@ -15,28 +15,151 @@
 #    You should have received a copy of the GNU Affero General Public License
 #    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
 import logging
-from monplugin import Check,Status
-from netapp_ontap.resources import Port,FcPort
+from monplugin import Check, Status
+from netapp_ontap.resources import Port, FcPort
 from netapp_ontap.error import NetAppRestError
 from ..tools import cli
-from ..tools.helper import setup_connection,item_filter,severity
+from ..tools.helper import setup_connection, item_filter, severity
 
 __cmd__ = "port-health"
-description = f"check port status"
+description = "check port status"
 
 """
 Check Port and FcPort endpoints. Disabled interfaces are ignored.
 """
 
+def is_enabled(port):
+    return getattr(port, "enabled", False)
+
+def is_filtered(args, name):
+    return (args.exclude or args.include) and item_filter(args, name)
+
+def fibrechannel(check, logger, args):
+    """
+    The operational state of the FC port. - startup - The port is booting up. - link_not_connected - The port has finished initialization, but a link with the fabric is not established. - online - The port is initialized and a link with the fabric has been established. - link_disconnected - The link was present at one point on this port but is currently not established. - offlined_by_user - The port is administratively disabled. - offlined_by_system - The port is set to offline by the system. This happens when the port encounters too many errors. - node_offline - The state information for the port cannot be retrieved. The node is offline or inaccessible.
+
+    Valid choices:
+    
+    startup
+    link_not_connected
+    online
+    link_disconnected
+    offlined_by_user
+    offlined_by_system
+    node_offline
+    unknown
+
+    """
+    FcPortOk = ['online']
+    FcPortWarning = ['startup', 'link_disconnected']
+    FcPortCritical = ['node_offline', 'offlined_by_system']
+    FcPortUnknown = ['unknown']
+    disabled = 0
+
+    try:
+        fcport_count = FcPort.count_collection()
+        if fcport_count == 0:
+            logger.info("no fc-ports found")
+            check.add_message(Status.OK, "no fc-ports found on device")
+            return 0, 0
+        FcPorts = FcPort.fast_get_collection(fields="*")
+    except NetAppRestError as error:
+        logger.error(f"NetApp REST Error: {error}")
+        check.add_message(Status.UNKNOWN, f"Error retrieving FC ports: {error}")
+        return 0, 0
+    except Exception as error:
+        logger.exception(error)
+        check.add_message(Status.UNKNOWN, f"Unexpected error: {error}")
+        return 0, 0
+
+    for fc in FcPorts:
+        if is_filtered(args, fc.name):
+            logger.info(f"exclude port {fc.name}")
+            fcport_count -= 1
+            continue
+
+        if fc.physical_protocol != "fibre_channel":
+            logger.info(f"FcPort isn't a fibre channel {fc.name} {fc.physical_protocol}")
+            fcport_count -= 1
+            continue
+
+        if not is_enabled(fc) or 'offlined_by_user' in fc.state:
+            logger.info(f"FcPort isn't enabled {fc.name}")
+            disabled += 1
+            continue
+
+        node_name = fc.node.get('name') if fc.node else "unknown"
+        logger.info(f"checking {node_name} - {fc.name} - {fc.physical_protocol}")
+        logger.debug(f"{fc}")
+        out = f"{fc.physical_protocol} {fc.name} on node {node_name} is {fc.state}"
+
+        if fc.state in FcPortOk:
+            check.add_message(Status.OK, out)
+        elif fc.state in FcPortWarning:
+            check.add_message(Status.WARNING, out)
+        elif fc.state in FcPortCritical:
+            check.add_message(Status.CRITICAL, out)
+        elif fc.state in FcPortUnknown:
+            check.add_message(Status.UNKNOWN, out)
+
+    return fcport_count, disabled
+
+def physports(check, logger, args):
+    disabled = 0
+    try:
+        port_count = Port.count_collection()
+        if port_count == 0:
+            check.add_message(Status.OK, "no ports found on device")
+            return 0, 0
+        Ports = Port.get_collection(fields="*")
+    except NetAppRestError as error:
+        logger.error(f"NetApp REST Error: {error}")
+        check.add_message(Status.UNKNOWN, f"Error retrieving ports: {error}")
+        return 0, 0
+    except Exception as error:
+        logger.exception(error)
+        check.add_message(Status.UNKNOWN, f"Unexpected error: {error}")
+        return 0, 0
+
+    for p in Ports:
+        if is_filtered(args, p.name):
+            logger.info(f"exclude port {p.name}")
+            port_count -= 1
+            continue
+
+        if not is_enabled(p):
+            logger.info(f"Port isn't enabled {p.name}")
+            disabled += 1
+            continue
+
+        logger.info(f"checking {p.node.name} - {p.name} - {p.type}")
+        logger.debug(f"{p}")
+        out = f"{p.type} {p.name} on node {p.node.name} is {p.state}"
+
+        if 'lag' in p.type:
+            active = [a.name for a in p.lag.active_ports]
+            activePorts = set(active)
+            missing = [m.name for m in p.lag.member_ports if m.name not in activePorts]
+            if missing:
+                check.add_message(Status.CRITICAL, f"{out}, port {missing} is missing on lag")
+            else:
+                check.add_message(Status.OK, f"{out}, with members {active}")
+        else:
+            if 'up' not in p.state:
+                check.add_message(Status.CRITICAL, out)
+            else:
+                check.add_message(Status.OK, out)
+
+    return port_count, disabled
+
 def run():
     parser = cli.Parser()
     parser.set_description(description)
-    parser.add_optional_arguments(cli.Argument.EXCLUDE,
-                                  cli.Argument.INCLUDE)
+    parser.add_optional_arguments(cli.Argument.EXCLUDE, cli.Argument.INCLUDE)
     args = parser.get_args()
 
-    # Setup module logging
     logger = logging.getLogger(__name__)
     logger.disabled = True
     if args.verbose:
@@ -47,122 +170,16 @@ def run():
     check = Check()
 
     setup_connection(args.host, args.api_user, args.api_pass, args.port)
-
-    try:
-        ##
-        ## fibre channel ports
-        ##
-        """
-        The operational state of the FC port. - startup - The port is booting up. - link_not_connected - The port has finished initialization, but a link with the fabric is not established. - online - The port is initialized and a link with the fabric has been established. - link_disconnected - The link was present at one point on this port but is currently not established. - offlined_by_user - The port is administratively disabled. - offlined_by_system - The port is set to offline by the system. This happens when the port encounters too many errors. - node_offline - The state information for the port cannot be retrieved. The node is offline or inaccessible.
-
-        Valid choices:
-        
-        startup
-        link_not_connected
-        online
-        link_disconnected
-        offlined_by_user
-        offlined_by_system
-        node_offline
-        unknown
-
-        """
-        FcPortOk = ['online']
-        FcPortWarning = ['startup','link_disconnected']
-        FcPortCritical = ['node_offline','offlined_by_system']
-        FcPortUnknown = ['unknown']
-        # Not interessted in link_not_connected or offlined_by_user
-       
-        fcport_count = FcPort.count_collection()
-        if fcport_count == 0:
-            check.add_message(Status.UNKNOWN,"no fc-ports found on device")
-            
-        FcPorts = FcPort.fast_get_collection(fields="*")
-        # count of disabled ports 
-        disabled = 0
-        
-        for fc in FcPorts:
-            # filter
-            if (args.exclude or args.include) and item_filter(args,fc.name):
-                logger.info(f"exclude port  {fc.name}")
-                fcport_count -= 1
-                continue
-
-            # Just use real fibre channel ports
-            if fc.physical_protocol != "fibre_channel":
-                logger.info(f"FcPort isn't a fibre channel {fc.name} {fc.physical_protocol}")
-                fcport_count -= 1
-                continue
-                
-            # not enabled or disabled by user     
-            if not hasattr(fc, "enabled") or not fc.enabled or 'offlined_by_user' in fc.state:
-                logger.info(f"FcPort isn't enabled {fc.name}")
-                disabled += 1
-                continue
-
-            logger.info(f"checking {fc.node['name']} - {fc.name} - {fc.physical_protocol}")
-            logger.debug(f"{fc}")
-            out = f"{fc.physical_protocol} {fc.name} on node {fc.node['name']} is {fc.state}"
-            
-            if fc.state in FcPortOk:
-                check.add_message(Status.OK, out)
-            elif fc.state in FcPortWarning:
-                check.add_message(Status.WARNING, out)
-            elif fc.state in FcPortCritical:
-                check.add_message(Status.CRITICAL, out)
-            elif fc.state in FcPortUnknown:
-                check.add_message(Status.UNKNOWN, out)
-            else:
-                pass
-        
-        ##
-        ## Physical ports
-        ##   
-        port_count = Port.count_collection()
-        if port_count == 0:
-            check.add_message(Status.UNKNOWN,"no ports found on device")
-        port_count += fcport_count     
-        
-        Ports = Port.get_collection(fields="*")
-        for p in Ports:
-            if (args.exclude or args.include) and item_filter(args,p.name):
-                logger.info(f"exclude port  {p.name}")
-                port_count -= 1
-                continue
-
-            if not hasattr(p, "enabled") or not p.enabled:
-                logger.info(f"Port isn't enabled {p.name}")
-                disabled += 1
-                continue
-
-            logger.info(f"checking {p.node.name} - {p.name} - {p.type}")
-            logger.debug(f"{p}")
-            out = f"{p.type} {p.name} on node {p.node.name} is {p.state}"
-            # check for type lag
-            if 'lag' in p.type:
-                active = [a.name for a  in p.lag.active_ports]
-                activePorts = set(active)
-                logger.info(f"LAG port {p.name} has {activePorts} as active ports")
-                missing = [ m.name for m in p.lag.member_ports if m.name not in activePorts ]
-                if len(missing) > 0:
-                    check.add_message(Status.CRITICAL,f"{out}, port {missing} is missing on lag")
-                else:
-                    check.add_message(Status.OK,f"{out}, with members {active}")
-            # check for type vlan and physical
-            else:
-                if not 'up' in p.state:
-                    check.add_message(Status.CRITICAL, out)
-                else:
-                    check.add_message(Status.OK,out)
-        
-    except NetAppRestError as error:
-        check.exit(Status.UNKNOWN, "Error => {}".format(error))
-    except Exception as error:
-        logger.exception(error)
     
-    short = f"checked {port_count} Ports; ({port_count- disabled} enabled, {disabled} disabled)"
-    (code, message) = check.check_messages(separator='\n')
-    check.exit(code=code,message=f"{short}\n{message}")
-   
+    fctotal, fcdisable = fibrechannel(check, logger, args)
+    phytotal, phydisabled = physports(check, logger, args)
+
+    port_count = fctotal + phytotal
+    all_disabled = fcdisable + phydisabled
+
+    short = f"checked {port_count} Ports; ({port_count - all_disabled} enabled, {all_disabled} disabled)"
+    code, message = check.check_messages(separator='\n')
+    check.exit(code=code, message=f"{short}\n{message}")
+
 if __name__ == "__main__":
     run()
