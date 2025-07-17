@@ -17,7 +17,7 @@ check_ontap:
 	rm -rf build
 
 dist: pyproject.toml
-	python3 -m build
+	python3 -m flit build
 	chmod a+r dist/*
 
 .PHONY: clean

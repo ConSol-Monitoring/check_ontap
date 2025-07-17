@@ -6,13 +6,13 @@ requires = ["flit_core >=3.2,<4"]
 name = "checkontap"
 readme = "README.md"
 description = "check_ontap monitoring plugin"
-version = "0.3.4"
+version = "0.3.7"
 requires-python = ">= 3.8"
 authors = [
     { name = "Matthias Gallinger", email = "matthias.gallinger@consol.de" }
 ]
 dependencies = [
-    "netapp-ontap >= 9.14.1.0",
+    "netapp-ontap >= 9.16.1.0",
     "monplugin >= 0.6.3",
 ]
 classifiers = [
@@ -25,9 +25,9 @@ classifiers = [
 check_ontap = "checkontap.cli:main"
 
 [project.urls]
-"homepage" = "https://github.com/consol/check_ontap"
-"repository" = "https://github.com/consol/check_ontap.git"
-"issues" = "https://github.com/consol/check_ontap/issues"
+"homepage" = "https://github.com/Consol-Monitoring/check_ontap"
+"repository" = "https://github.com/Consol-Monitoring/check_ontap.git"
+"issues" = "https://github.com/Consol-Monitoring/check_ontap/issues"
 
 [tool.flit.sdist]
 exclude = ["dist/"]

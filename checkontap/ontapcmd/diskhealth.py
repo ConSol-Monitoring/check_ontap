@@ -120,6 +120,9 @@ def run():
     (code,message) = check.check_messages(separator='\n  ')
     check.exit(code=code,message=message)
 
+##
+## MODE MULTIPATH
+##
 def check_multipath(check,logger,args,Disks):
     """
     Minimum ONTAP v9.9 is required
@@ -148,6 +151,9 @@ def check_multipath(check,logger,args,Disks):
     else:
         check.add_message(Status.OK,f"{count} disks have symmetric paths")
 
+##
+## MODE MULTIPATH
+##
 def check_diskstate(check,logger,args,Disks):
     out = {}
     cType = {}
@@ -206,26 +212,37 @@ def check_diskstate(check,logger,args,Disks):
         unfail
         zeroing
         """
+        if hasattr(disk, 'container_type') and disk.container_type not in cType:
+            cType[disk.container_type] = 0
+        cType[disk.container_type] += 1
 
         stateWarn = re.match('reconstructing|zeroing', disk.state.lower())
         stateCrit = re.match('(broken|offline)', disk.state.lower())
-
-        if disk.container_type not in cType:
-            cType[disk.container_type] = 0
-        cType[disk.container_type] += 1
 
         out[disk.name] = {}
         out[disk.name]['name'] = disk.name
         out[disk.name]['state'] = disk.state
         out[disk.name]['bay'] = disk.bay if hasattr(disk, 'bay') else " - "
-        out[disk.name]['node'] = disk.home_node.name if hasattr(disk, 'home_node') else "unknown"
+        out[disk.name]['node'] = getattr(getattr(disk, 'home_node', None), 'name', 'unknown')
+        
         if disk.container_type in ["unassigned","unsupported","unknown"]:
             m = f"Disk {disk.name:7} on bay {disk.bay:3} is {disk.container_type}"
             check.add_message(Status.WARNING,m)
+            continue
+        elif disk.container_type in ["broken"]:
+            if hasattr(disk, "outage"):
+                m = f"Disk {disk.name} on bay {disk.bay:3} - code {disk.outage.reason.code} {disk.outage.reason.message}"
+                check.add_message(Status.CRITICAL, m)
+            else:
+                m = f"Disk {disk.name} on bay {disk.bay:3} is failed with unknown reason"
+                check.add_message(Status.WARNING, m)
+            continue 
         elif disk.container_type != "remote":
-            if disk.node.name != disk.home_node.name:
+            node_name = getattr(getattr(disk, 'node', None), 'name', 'unknown') or 'unknown'
+            homenode_name = getattr(getattr(disk, 'home_node', None), 'name', 'unknown') or 'unknown'
+            if node_name != homenode_name:
                 check.add_message(Status.WARNING, f"Disk {disk.name} is on node {disk.node.name} instead of {disk.home_node.name}")
-            m = f"Disk {disk.name:7} on bay {disk.bay:3} of node {disk.home_node.name} is {disk.state}"
+            m = f"Disk {disk.name:7} on bay {disk.bay:3} of node {homenode_name} is {disk.state}"
             if stateWarn:
                 check.add_message(Status.WARNING,m)
             elif stateCrit:

@@ -51,7 +51,7 @@ def run():
     setup_connection(args.host, args.api_user, args.api_pass, args.port)
 
     check = Check()
-
+ 
     # Get data and check for cluster type
     try:
         cluster = Metrocluster()
@@ -112,7 +112,8 @@ def run():
         # Cluster node states
         for node in nodes:
             logger.debug(f"Node info \n{node.__dict__}")
-            m = "{} state {} as {}; giveback: {}; takeover: {}".format(node.name,node.state,node.membership,node.ha.giveback.state,node.ha.takeover.state)
+            membership = getattr(node, 'membership', "not set")
+            m = f"{node.name} state {node.state} membership {membership:9}; giveback: {node.ha.giveback.state}; takeover: {node.ha.takeover.state}"
             if 'up' in node.state:
                 check.add_message(Status.OK, m)
             elif 'down' in node.state:
